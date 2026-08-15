@@ -108,7 +108,7 @@ function sanitizeQuiz(raw) {
   const questions = [];
   for (let i = 0; i < raw.questions.length; i++) {
     const rq = raw.questions[i] || {};
-    const type = rq.type === 'fib' ? 'fib' : 'mc';
+    const type = rq.type === 'fib' ? 'fib' : (rq.type === 'trap' ? 'trap' : 'mc');
     const text = cleanText(rq.text, 400);
     if (!text) return { error: `${i + 1}. sorunun metni bos.` };
     const points = toInt(rq.points, 0, 1000000, 100);
@@ -116,7 +116,14 @@ function sanitizeQuiz(raw) {
 
     const q = { type, text, points, timeLimit };
 
-    if (type === 'mc') {
+    // Risk bayragi: takimlar soru acilmadan puan riske eder (tuzakla birlesmez)
+    q.risk = !!rq.risk && type !== 'trap';
+    if (q.risk) {
+      q.category = cleanText(rq.category, 60);
+      q.riskZero = toInt(rq.riskZero, 1, 1000000, 100); // 0 puandaki takim bu deger icin oynar
+    }
+
+    if (type === 'mc' || type === 'trap') {
       const options = (Array.isArray(rq.options) ? rq.options : [])
         .map((o) => cleanText(o, 160))
         .filter((o) => o.length > 0)
@@ -128,6 +135,14 @@ function sanitizeQuiz(raw) {
       if (correct.length === 0) return { error: `${i + 1}. soruda dogru sik isaretlenmemis.` };
       q.options = options;
       q.correct = correct;
+      if (type === 'trap') {
+        const traps = Array.from(new Set((Array.isArray(rq.traps) ? rq.traps : [])
+          .map((n) => toInt(n, 0, options.length - 1, -1))
+          .filter((n) => n >= 0 && n < options.length)));
+        if (traps.length === 0) return { error: `${i + 1}. soruda tuzak sik isaretlenmemis.` };
+        if (traps.some((t) => correct.includes(t))) return { error: `${i + 1}. soruda ayni sik hem dogru hem tuzak olamaz.` };
+        q.traps = traps;
+      }
     } else {
       const accepted = (Array.isArray(rq.accepted) ? rq.accepted : [])
         .map((a) => cleanText(a, 100))
@@ -154,8 +169,9 @@ function createGame(quiz) {
     hostToken: crypto.randomUUID(),
     hostSocketId: null,
     players: new Map(), // token -> player
-    state: 'lobby', // lobby | question | reveal | leaderboard | ended
+    state: 'lobby', // lobby | wager | question | reveal | leaderboard | ended
     currentIndex: -1,
+    wagerIndex: -1,
     endsAt: null,
     timerHandle: null,
     lastReveal: null, // { distribution, correctDisplay, answeredCount }
@@ -226,17 +242,85 @@ function publicQuestion(game) {
     type: q.type,
     text: q.text,
     points: q.points,
+    risk: !!q.risk,
+    category: q.category || '',
     timeLimit: q.timeLimit,
     endsAt: game.endsAt,
     serverNow: now(),
   };
-  if (q.type === 'mc') pub.options = q.options;
+  if (q.type !== 'fib') pub.options = q.options;
   return pub;
 }
 
+/* ------------------------------------------------------ risk (bahis) */
+
+function wagerYou(game, index, p) {
+  const q = game.quiz.questions[index];
+  const existing = p.wagers && p.wagers[index];
+  return {
+    index,
+    total: game.quiz.questions.length,
+    category: q.category || '',
+    score: p.score,
+    maxWager: Math.max(0, Math.floor(p.score)),
+    forced: p.score < 1 ? q.riskZero : null,
+    current: existing && !existing.zero ? existing.amount : null,
+  };
+}
+
+function emitWagerHost(game) {
+  if (!game.hostSocketId || game.state !== 'wager') return;
+  let eligible = 0, decided = 0, zero = 0;
+  for (const p of game.players.values()) {
+    if (!p.connected) continue;
+    if (p.score < 1) { zero++; continue; }
+    eligible++;
+    if (p.wagers && p.wagers[game.wagerIndex] !== undefined) decided++;
+  }
+  const q = game.quiz.questions[game.wagerIndex];
+  io.to(game.hostSocketId).emit('wager:progress', {
+    index: game.wagerIndex,
+    total: game.quiz.questions.length,
+    category: q ? (q.category || '') : '',
+    decided, eligible, zero,
+    playerCount: connectedPlayers(game),
+  });
+}
+
+function startWager(game, index) {
+  if (game.timerHandle) { clearTimeout(game.timerHandle); game.timerHandle = null; }
+  game.state = 'wager';
+  game.wagerIndex = index;
+  game.endsAt = null;
+  touch(game);
+  for (const p of game.players.values()) {
+    if (!p.connected || !p.socketId) continue;
+    io.to(p.socketId).emit('wager:start', wagerYou(game, index, p));
+  }
+  emitWagerHost(game);
+  return { ok: true };
+}
+
+// Soru acilirken: risk girmeyen 1 puanla, 0 puandaki takim riskZero icin oynar
+function finalizeWagers(game, index) {
+  const q = game.quiz.questions[index];
+  for (const p of game.players.values()) {
+    p.wagers = p.wagers || {};
+    if (p.wagers[index] === undefined) {
+      if (p.score < 1) p.wagers[index] = { zero: true, plays: q.riskZero };
+      else p.wagers[index] = { amount: 1, auto: true };
+    }
+  }
+}
+
 function correctDisplay(q) {
-  if (q.type === 'mc') {
-    return { type: 'mc', indices: q.correct, texts: q.correct.map((i) => q.options[i]) };
+  if (q.type !== 'fib') {
+    const cd = { type: 'mc', indices: q.correct, texts: q.correct.map((i) => q.options[i]) };
+    if (q.type === 'trap') {
+      cd.traps = q.traps;
+      cd.trapTexts = q.traps.map((i) => q.options[i]);
+    }
+    return cd;
   }
   return { type: 'fib', answers: q.accepted };
 }
@@ -300,10 +384,17 @@ function startQuestion(game, index) {
   if (game.state === 'question') return { error: 'Once acik soruyu kapat.' };
   if (game.timerHandle) { clearTimeout(game.timerHandle); game.timerHandle = null; }
 
+  const q = game.quiz.questions[index];
+
+  // Risk sorusu once bahis asamasindan gecer; ikinci cagri soruyu acar
+  if (q.risk && !(game.state === 'wager' && game.wagerIndex === index)) {
+    return startWager(game, index);
+  }
+  if (q.risk) finalizeWagers(game, index);
+
   game.currentIndex = index;
   game.state = 'question';
   game.lastReveal = null;
-  const q = game.quiz.questions[index];
   game.endsAt = q.timeLimit > 0 ? now() + q.timeLimit * 1000 : null;
   if (q.timeLimit > 0) {
     game.timerHandle = setTimeout(() => {
@@ -312,7 +403,21 @@ function startQuestion(game, index) {
     }, q.timeLimit * 1000 + 150);
   }
   touch(game);
-  io.to(room(game)).emit('question:start', publicQuestion(game));
+  const pub = publicQuestion(game);
+  if (q.risk) {
+    // Her oyuncu kendi risk miktarini gorur
+    for (const p of game.players.values()) {
+      if (!p.connected || !p.socketId) continue;
+      const w = p.wagers[index];
+      io.to(p.socketId).emit('question:start', {
+        ...pub,
+        yourWager: w ? (w.zero ? { zero: true, plays: w.plays } : { amount: w.amount }) : null,
+      });
+    }
+    if (game.hostSocketId) io.to(game.hostSocketId).emit('question:start', pub);
+  } else {
+    io.to(room(game)).emit('question:start', pub);
+  }
   emitProgress(game);
   return { ok: true };
 }
@@ -339,26 +444,37 @@ function closeQuestion(game) {
   for (const p of game.players.values()) {
     const a = p.answers[i];
     let correct = false;
+    let trapped = false;
     let display = null;
     if (a !== undefined) {
       answeredCount++;
-      if (q.type === 'mc') {
+      if (q.type !== 'fib') {
         correct = q.correct.includes(a);
+        trapped = q.type === 'trap' && q.traps.includes(a);
         display = q.options[a] !== undefined ? q.options[a] : null;
       } else {
         correct = isFibCorrect(a, q);
         display = String(a).slice(0, 100);
       }
     }
-    const gain = correct ? q.points : 0;
+    let gain;
+    if (q.risk) {
+      const w = (p.wagers && p.wagers[i]) || (p.score < 1 ? { zero: true, plays: q.riskZero } : { amount: 1 });
+      if (w.zero) gain = correct ? w.plays : 0; // 0 puandaki takim: kazanir ama kaybetmez
+      else gain = correct ? w.amount : -w.amount; // dogruda +risk, yanlista -risk
+    } else if (q.type === 'trap') {
+      gain = correct ? q.points : (trapped ? -q.points : 0); // tuzaga dusen puan kaybeder
+    } else {
+      gain = correct ? q.points : 0;
+    }
     p.score += gain;
     p.lastGain = gain;
-    p.lastResult = { index: i, answered: a !== undefined, correct, gain, display };
+    p.lastResult = { index: i, answered: a !== undefined, correct, trapped, gain, display };
   }
 
   // Dagilim (host ekrani icin)
   let distribution;
-  if (q.type === 'mc') {
+  if (q.type !== 'fib') {
     const counts = q.options.map(() => 0);
     for (const p of game.players.values()) {
       const a = p.answers[i];
@@ -395,6 +511,7 @@ function closeQuestion(game) {
       index: i,
       answered: r.answered,
       correct: r.correct,
+      trapped: !!r.trapped,
       gain: r.gain,
       score: p.score,
       rank: rankOf(lb, p.token),
@@ -482,8 +599,16 @@ function playerSnapshot(game, p) {
     you: { nickname: p.nickname, score: p.score },
     lobby: lobbyPayload(game),
   };
+  if (game.state === 'wager') {
+    snap.wager = wagerYou(game, game.wagerIndex, p);
+  }
   if (game.state === 'question') {
     snap.question = publicQuestion(game);
+    const q = game.quiz.questions[game.currentIndex];
+    if (q && q.risk) {
+      const w = p.wagers && p.wagers[game.currentIndex];
+      snap.question.yourWager = w ? (w.zero ? { zero: true, plays: w.plays } : { amount: w.amount }) : null;
+    }
     snap.answered = p.answers[game.currentIndex] !== undefined;
   }
   if (game.state === 'reveal' && game.lastReveal) {
@@ -493,6 +618,7 @@ function playerSnapshot(game, p) {
       index: game.currentIndex,
       answered: r ? r.answered : false,
       correct: r ? r.correct : false,
+      trapped: r ? !!r.trapped : false,
       gain: r ? r.gain : 0,
       score: p.score,
       rank: rankOf(lb, p.token),
@@ -537,11 +663,30 @@ function hostSnapshot(game) {
         type: q.type, text: q.text, points: q.points, timeLimit: q.timeLimit,
         options: q.options, correct: q.correct, accepted: q.accepted,
         caseSensitive: q.caseSensitive, typoTolerance: q.typoTolerance,
+        risk: !!q.risk, category: q.category || '', riskZero: q.riskZero,
+        traps: q.traps,
       })),
     },
     currentIndex: game.currentIndex,
     lobby: hostLobbyPayload(game),
   };
+  if (game.state === 'wager') {
+    let eligible = 0, decided = 0, zero = 0;
+    for (const p of game.players.values()) {
+      if (!p.connected) continue;
+      if (p.score < 1) { zero++; continue; }
+      eligible++;
+      if (p.wagers && p.wagers[game.wagerIndex] !== undefined) decided++;
+    }
+    const wq = game.quiz.questions[game.wagerIndex];
+    snap.wagerData = {
+      index: game.wagerIndex,
+      total: game.quiz.questions.length,
+      category: wq ? (wq.category || '') : '',
+      decided, eligible, zero,
+      playerCount: connectedPlayers(game),
+    };
+  }
   if (game.state === 'question') snap.question = publicQuestion(game);
   if (game.state === 'reveal' && game.lastReveal) {
     snap.reveal = { ...game.lastReveal, top: stripRows(leaderboard(game), 5), playerCount: game.players.size };
@@ -710,6 +855,7 @@ io.on('connection', (socket) => {
           lastGain: 0,
           lastResult: null,
           answers: {},
+          wagers: {},
           connected: true,
           socketId: socket.id,
           joinedAt: now(),
@@ -734,6 +880,27 @@ io.on('connection', (socket) => {
     broadcastLobby(game);
     emitProgress(game);
     cb({ ok: true, token: player.token, nickname: player.nickname, snapshot: playerSnapshot(game, player) });
+  }));
+
+  socket.on('player:wager', safe((payload, cb) => {
+    const game = games.get(String(payload.pin || ''));
+    if (!game) { cb({ error: 'Oyun bulunamadi.' }); return; }
+    const player = game.players.get(String(payload.token || ''));
+    if (!player) { cb({ error: 'Once oyuna katil.' }); return; }
+    if (game.state !== 'wager' || toInt(payload.index, -1, 100000, -1) !== game.wagerIndex) {
+      cb({ error: 'Risk asamasi su an acik degil.' });
+      return;
+    }
+    if (player.score < 1) { cb({ error: 'Puanin olmadigi icin bu turda otomatik oynuyorsun.' }); return; }
+    const maxW = Math.floor(player.score);
+    const amt = toInt(payload.amount, -1000000000, 1000000000, -1);
+    if (amt < 1) { cb({ error: 'En az 1 puan riske etmelisin.' }); return; }
+    if (amt > maxW) { cb({ error: 'En fazla ' + maxW + ' puan riske edebilirsin.' }); return; }
+    player.wagers = player.wagers || {};
+    player.wagers[game.wagerIndex] = { amount: amt };
+    touch(game);
+    cb({ ok: true, amount: amt });
+    emitWagerHost(game);
   }));
 
   socket.on('player:leave', safe((payload, cb) => {
@@ -771,7 +938,7 @@ io.on('connection', (socket) => {
 
     const q = game.quiz.questions[i];
     let value;
-    if (q.type === 'mc') {
+    if (q.type !== 'fib') {
       const n = toInt(payload.value, 0, q.options.length - 1, -1);
       if (n < 0) { cb({ error: 'Gecersiz sik.' }); return; }
       value = n;

@@ -2,7 +2,7 @@
 'use strict';
 
 const VIEWS = ['v-login', 'v-dash', 'v-editor', 'v-stage'];
-const STAGES = ['s-lobby', 's-question', 's-reveal', 's-leaderboard', 's-final'];
+const STAGES = ['s-lobby', 's-wager', 's-question', 's-reveal', 's-leaderboard', 's-final'];
 const socket = io();
 
 let password = sessionStorage.getItem('cq_pw') || null;
@@ -49,8 +49,11 @@ function demoQuiz() {
         options: ['Doğru', 'Yanlış'], correct: [1] },
       { type: 'fib', text: "İstiklal Marşı'nın şairi kimdir? (Ad Soyad yaz)", points: 200, timeLimit: 30,
         accepted: ['Mehmet Akif Ersoy', 'Mehmet Akif'], caseSensitive: false, typoTolerance: true },
+      { type: 'trap', text: 'Hangisi bir Nobel ödülü kategorisi değildir?', points: 200, timeLimit: 25,
+        options: ['Matematik', 'Fizik', 'Edebiyat', 'Ekonomi'], correct: [0], traps: [3] },
       { type: 'mc', text: 'Hangisi bir gezegen değildir?', points: 150, timeLimit: 20,
-        options: ['Mars', 'Venüs', 'Ay', 'Jüpiter'], correct: [2] },
+        options: ['Mars', 'Venüs', 'Ay', 'Jüpiter'], correct: [2],
+        risk: true, category: 'Uzay', riskZero: 100 },
     ],
   };
 }
@@ -62,9 +65,11 @@ if (!quizzes) {
 
 function blankQuestion(type) {
   if (type === 'fib') {
-    return { type: 'fib', text: '', points: 100, timeLimit: 20, accepted: [], caseSensitive: false, typoTolerance: false };
+    return { type: 'fib', text: '', points: 100, timeLimit: 20, accepted: [], caseSensitive: false, typoTolerance: false, risk: false, category: '', riskZero: 100 };
   }
-  return { type: 'mc', text: '', points: 100, timeLimit: 20, options: ['', '', '', ''], correct: [] };
+  const base = { type: type === 'trap' ? 'trap' : 'mc', text: '', points: 100, timeLimit: 20, options: ['', '', '', ''], correct: [], risk: false, category: '', riskZero: 100 };
+  if (base.type === 'trap') base.traps = [];
+  return base;
 }
 
 function getQuiz(id) { return quizzes.find((q) => q.id === id); }
@@ -163,19 +168,23 @@ $('fileImport').addEventListener('change', (e) => {
       if (!qs) throw new Error('questions yok');
       const quiz = { id: uid(), title: String(data.title || 'İçe aktarılan quiz').slice(0, 80), updatedAt: Date.now(), questions: [] };
       for (const rq of qs.slice(0, 150)) {
-        const q = blankQuestion(rq.type === 'fib' ? 'fib' : 'mc');
+        const q = blankQuestion(rq.type === 'fib' ? 'fib' : (rq.type === 'trap' ? 'trap' : 'mc'));
         q.text = String(rq.text || '').slice(0, 400);
         q.points = Math.max(0, Math.round(Number(rq.points) || 100));
         q.timeLimit = Math.max(0, Math.round(Number(rq.timeLimit) || 0));
-        if (q.type === 'mc') {
+        if (q.type !== 'fib') {
           q.options = (Array.isArray(rq.options) ? rq.options : []).map((o) => String(o).slice(0, 160)).slice(0, 6);
           while (q.options.length < 2) q.options.push('');
           q.correct = (Array.isArray(rq.correct) ? rq.correct : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < q.options.length);
+          if (q.type === 'trap') q.traps = (Array.isArray(rq.traps) ? rq.traps : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < q.options.length && !q.correct.includes(n));
         } else {
           q.accepted = (Array.isArray(rq.accepted) ? rq.accepted : []).map((a) => String(a).slice(0, 100)).slice(0, 30);
           q.caseSensitive = !!rq.caseSensitive;
           q.typoTolerance = !!rq.typoTolerance;
         }
+        q.risk = !!rq.risk;
+        q.category = String(rq.category || '').slice(0, 60);
+        q.riskZero = Math.max(1, Math.round(Number(rq.riskZero) || 100));
         quiz.questions.push(q);
       }
       if (!quiz.questions.length) throw new Error('soru yok');
@@ -233,17 +242,21 @@ function renderEditor() {
   const wrap = $('qEditor');
   wrap.innerHTML = quiz.questions.map((q, qi) => {
     let body = '';
-    if (q.type === 'mc') {
+    if (q.type !== 'fib') {
+      const isTrap = q.type === 'trap';
       body = q.options.map((opt, oi) => (
         '<div class="opt-edit-row">' +
           '<span class="mini-shape" style="' + optColorStyle(oi) + '">' + OPT_SHAPES[oi % 6] + '</span>' +
           '<input class="input" data-qi="' + qi + '" data-field="option" data-oi="' + oi + '" maxlength="160" placeholder="' + (oi + 1) + '. şık" value="' + esc(opt) + '">' +
           '<button class="correct-toggle' + (q.correct.includes(oi) ? ' on' : '') + '" data-qi="' + qi + '" data-act="correct" data-oi="' + oi + '" title="Doğru cevap olarak işaretle">&#10003;</button>' +
+          (isTrap ? '<button class="trap-toggle' + ((q.traps || []).includes(oi) ? ' on' : '') + '" data-qi="' + qi + '" data-act="trapmark" data-oi="' + oi + '" title="Tuzak şık olarak işaretle">&#9888;</button>' : '') +
           (q.options.length > 2 ? '<button class="icon-btn" data-qi="' + qi + '" data-act="rmopt" data-oi="' + oi + '" title="Şıkkı sil">&#215;</button>' : '') +
         '</div>'
       )).join('') +
       (q.options.length < 6 ? '<button class="btn btn-sm" style="margin-top:10px;" data-qi="' + qi + '" data-act="addopt">+ Şık ekle</button>' : '') +
-      '<p class="tiny" style="margin-top:8px;">Doğru şıkkın yanındaki onay işaretini yeşile getir. Birden fazla doğru işaretlersen, herhangi birini seçen puan alır.</p>';
+      (isTrap
+        ? '<p class="tiny" style="margin-top:8px;">Yeşil onay doğru şık, turuncu ünlem tuzak şık. Doğruyu bilen soru puanını kazanır, tuzağı seçen aynı puanı kaybeder, diğer yanlışlar puan değiştirmez.</p>'
+        : '<p class="tiny" style="margin-top:8px;">Doğru şıkkın yanındaki onay işaretini yeşile getir. Birden fazla doğru işaretlersen, herhangi birini seçen puan alır.</p>');
     } else {
       body =
         '<div class="qe-mini-label" style="margin-top:6px;">Kabul edilen cevaplar (her satıra bir tane)</div>' +
@@ -251,13 +264,23 @@ function renderEditor() {
         '<label class="check-line"><input type="checkbox" data-qi="' + qi + '" data-field="typoTolerance"' + (q.typoTolerance ? ' checked' : '') + '> 1 harflik yazım hatasını kabul et</label>' +
         '<label class="check-line"><input type="checkbox" data-qi="' + qi + '" data-field="caseSensitive"' + (q.caseSensitive ? ' checked' : '') + '> Büyük/küçük harfe duyarlı olsun</label>';
     }
+    const riskHtml = q.type === 'trap' ? '' :
+      '<label class="check-line" style="margin-top:12px;"><input type="checkbox" data-qi="' + qi + '" data-field="risk"' + (q.risk ? ' checked' : '') + '> <span><strong style="color:var(--accent);">Risk sorusu:</strong> takımlar soru açılmadan puan riske eder, doğruda +risk, yanlışta -risk</span></label>' +
+      (q.risk
+        ? '<div class="qe-row" style="margin-top:10px;">' +
+            '<div style="flex:1; min-width:200px;"><div class="qe-mini-label">Kategori (risk ekranında takımlara gösterilir)</div>' +
+            '<input class="input" maxlength="60" data-qi="' + qi + '" data-field="category" placeholder="Örn: Tarih" value="' + esc(q.category || '') + '"></div>' +
+            '<div><div class="qe-mini-label">0 puandaki takım kaç puan için oynar</div>' +
+            '<input type="number" min="1" max="1000000" step="10" class="input qe-mini" data-qi="' + qi + '" data-field="riskZero" value="' + (q.riskZero || 100) + '"></div>' +
+          '</div>'
+        : '');
     return (
       '<div class="card qe-card">' +
         '<div class="qe-head">' +
           '<span class="qe-num">' + (qi + 1) + '.</span>' +
-          '<span class="chip">' + (q.type === 'mc' ? 'Çoktan Seçmeli' : 'Boşluk Doldurma') + '</span>' +
+          '<span class="chip">' + (q.type === 'mc' ? 'Çoktan Seçmeli' : (q.type === 'trap' ? 'Tuzak' : 'Boşluk Doldurma')) + (q.risk ? ' | RİSK' : '') + '</span>' +
           '<span class="grow"></span>' +
-          '<div><div class="qe-mini-label">Puan</div><input type="number" min="0" max="1000000" step="10" class="input qe-mini" data-qi="' + qi + '" data-field="points" value="' + q.points + '"></div>' +
+          '<div><div class="qe-mini-label">' + (q.risk ? 'Puan (riskte kullanılmaz)' : 'Puan') + '</div><input type="number" min="0" max="1000000" step="10" class="input qe-mini" data-qi="' + qi + '" data-field="points" value="' + q.points + '"' + (q.risk ? ' disabled title="Risk sorusunda puan, takımın riske ettiği miktardır"' : '') + '></div>' +
           '<div><div class="qe-mini-label">Süre (sn, 0 = süresiz)</div><input type="number" min="0" max="600" step="5" class="input qe-mini" data-qi="' + qi + '" data-field="timeLimit" value="' + q.timeLimit + '"></div>' +
           '<button class="icon-btn" data-qi="' + qi + '" data-act="up" title="Yukarı taşı">&#8593;</button>' +
           '<button class="icon-btn" data-qi="' + qi + '" data-act="down" title="Aşağı taşı">&#8595;</button>' +
@@ -266,6 +289,7 @@ function renderEditor() {
         '</div>' +
         '<textarea class="input" rows="2" maxlength="400" data-qi="' + qi + '" data-field="text" placeholder="Soru metni...">' + esc(q.text) + '</textarea>' +
         body +
+        riskHtml +
       '</div>'
     );
   }).join('');
@@ -293,6 +317,15 @@ $('qEditor').addEventListener('input', (e) => {
   else if (field === 'accepted') q.accepted = el.value.split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 30);
   else if (field === 'typoTolerance') q.typoTolerance = el.checked;
   else if (field === 'caseSensitive') q.caseSensitive = el.checked;
+  else if (field === 'risk') {
+    q.risk = el.checked;
+    if (q.risk && !(q.riskZero >= 1)) q.riskZero = 100;
+    saveEditing();
+    renderEditor();
+    return;
+  }
+  else if (field === 'category') q.category = el.value;
+  else if (field === 'riskZero') q.riskZero = Math.max(1, Math.round(Number(el.value) || 1));
   saveEditing();
 });
 
@@ -309,15 +342,31 @@ $('qEditor').addEventListener('click', (e) => {
     const oi = Number(btn.dataset.oi);
     const pos = q.correct.indexOf(oi);
     if (pos >= 0) q.correct.splice(pos, 1); else q.correct.push(oi);
+    if (q.traps) {
+      const t = q.traps.indexOf(oi);
+      if (t >= 0 && q.correct.includes(oi)) { q.traps.splice(t, 1); saveEditing(); renderEditor(); return; }
+    }
     btn.classList.toggle('on', q.correct.includes(oi));
     saveEditing();
     return; // yeniden cizime gerek yok
+  }
+  if (act === 'trapmark') {
+    const oi = Number(btn.dataset.oi);
+    q.traps = q.traps || [];
+    const pos = q.traps.indexOf(oi);
+    if (pos >= 0) q.traps.splice(pos, 1); else q.traps.push(oi);
+    const c = q.correct.indexOf(oi);
+    if (c >= 0 && q.traps.includes(oi)) { q.correct.splice(c, 1); saveEditing(); renderEditor(); return; }
+    btn.classList.toggle('on', q.traps.includes(oi));
+    saveEditing();
+    return;
   }
   if (act === 'addopt') { q.options.push(''); }
   else if (act === 'rmopt') {
     const oi = Number(btn.dataset.oi);
     q.options.splice(oi, 1);
     q.correct = q.correct.filter((c) => c !== oi).map((c) => (c > oi ? c - 1 : c));
+    if (q.traps) q.traps = q.traps.filter((c) => c !== oi).map((c) => (c > oi ? c - 1 : c));
   }
   else if (act === 'up' && qi > 0) { quiz.questions.splice(qi - 1, 0, quiz.questions.splice(qi, 1)[0]); }
   else if (act === 'down' && qi < quiz.questions.length - 1) { quiz.questions.splice(qi + 1, 0, quiz.questions.splice(qi, 1)[0]); }
@@ -343,6 +392,12 @@ $('btnAddFib').addEventListener('click', () => {
   saveEditing(); renderEditor();
   window.scrollTo(0, document.body.scrollHeight);
 });
+$('btnAddTrap').addEventListener('click', () => {
+  const quiz = getQuiz(editingId);
+  quiz.questions.push(blankQuestion('trap'));
+  saveEditing(); renderEditor();
+  window.scrollTo(0, document.body.scrollHeight);
+});
 
 $('btnBackDash').addEventListener('click', () => { renderDash(); showView(VIEWS, 'v-dash'); });
 $('btnStartFromEditor').addEventListener('click', () => {
@@ -357,11 +412,12 @@ function validateQuiz(quiz) {
   for (let i = 0; i < quiz.questions.length; i++) {
     const q = quiz.questions[i];
     if (!String(q.text || '').trim()) return (i + 1) + '. sorunun metni boş.';
-    if (q.type === 'mc') {
+    if (q.type !== 'fib') {
       const filled = q.options.map((o, oi) => ({ o: String(o || '').trim(), oi })).filter((x) => x.o);
       if (filled.length < 2) return (i + 1) + '. soruda en az 2 dolu şık olmalı.';
       const filledIdx = filled.map((x) => x.oi);
       if (!q.correct.some((c) => filledIdx.includes(c))) return (i + 1) + '. soruda doğru şık işaretlenmemiş.';
+      if (q.type === 'trap' && !(q.traps || []).some((c) => filledIdx.includes(c))) return (i + 1) + '. soruda tuzak şık işaretlenmemiş.';
     } else {
       if (!(q.accepted || []).length) return (i + 1) + '. soru için kabul edilen cevap girilmemiş.';
     }
@@ -374,18 +430,23 @@ function packQuiz(quiz) {
   return {
     title: quiz.title || 'Adsız Quiz',
     questions: quiz.questions.map((q) => {
-      if (q.type === 'mc') {
+      const riskFields = { risk: !!q.risk, category: q.category || '', riskZero: q.riskZero || 100 };
+      if (q.type !== 'fib') {
         const keep = [];
         q.options.forEach((o, oi) => { if (String(o || '').trim()) keep.push(oi); });
-        return {
-          type: 'mc', text: q.text, points: q.points, timeLimit: q.timeLimit,
+        const packed = {
+          type: q.type, text: q.text, points: q.points, timeLimit: q.timeLimit,
           options: keep.map((oi) => q.options[oi]),
           correct: q.correct.filter((c) => keep.includes(c)).map((c) => keep.indexOf(c)),
+          ...riskFields,
         };
+        if (q.type === 'trap') packed.traps = (q.traps || []).filter((c) => keep.includes(c)).map((c) => keep.indexOf(c));
+        return packed;
       }
       return {
         type: 'fib', text: q.text, points: q.points, timeLimit: q.timeLimit,
         accepted: q.accepted, caseSensitive: q.caseSensitive, typoTolerance: q.typoTolerance,
+        ...riskFields,
       };
     }),
   };
@@ -445,6 +506,7 @@ function applyHostSnapshot(snap) {
   updateConn(snap.lobby);
 
   if (snap.state === 'lobby') renderStageLobby(snap.lobby);
+  else if (snap.state === 'wager') renderStageWager(snap.wagerData);
   else if (snap.state === 'question') renderStageQuestion(snap.question);
   else if (snap.state === 'reveal') renderStageReveal(snap.reveal);
   else if (snap.state === 'leaderboard') renderStageLeaderboard(snap.leaderboardData, true);
@@ -506,19 +568,44 @@ $('playerChips').addEventListener('click', (e) => {
   hostAction('host:kick', { playerToken: btn.dataset.token });
 });
 
+/* --- risk (bahis) asamasi --- */
+
+function renderStageWager(d) {
+  stage.state = 'wager';
+  stage.currentIndex = d.index;
+  $('hWgCat').textContent = 'Soru ' + (d.index + 1) + ' / ' + d.total + (d.category ? ' | Kategori: ' + d.category : '');
+  $('hWgDecided').textContent = d.decided + ' / ' + d.eligible;
+  $('hWgZero').textContent = d.zero > 0 ? d.zero + ' takımın puanı olmadığı için otomatik oynuyor' : '';
+  setStage('s-wager');
+  stageButtons([
+    { label: 'Soruyu Göster', primary: true, onClick: () => hostAction('host:start_question', { index: d.index }) },
+  ]);
+}
+
+socket.on('wager:progress', (d) => { if (game) renderStageWager(d); });
+
 /* --- soru --- */
 
 function renderStageQuestion(q) {
   stage.state = 'question';
   stage.currentIndex = q.index;
   $('hQNo').textContent = (q.index + 1) + ' / ' + q.total;
-  $('hQPts').textContent = fmtPts(q.points);
+  if (q.risk) {
+    $('hQPts').textContent = 'RİSK' + (q.category ? ' | ' + q.category : '');
+    $('hQPts').parentElement.style.borderColor = 'rgba(227,196,127,0.5)';
+  } else if (q.type === 'trap') {
+    $('hQPts').textContent = fmtPts(q.points) + ' puan | TUZAK VAR';
+    $('hQPts').parentElement.style.borderColor = 'rgba(239,111,111,0.5)';
+  } else {
+    $('hQPts').textContent = fmtPts(q.points) + ' puan';
+    $('hQPts').parentElement.style.borderColor = '';
+  }
   $('hAnswered').textContent = '0 / ' + $('stConn').textContent;
   $('hQText').textContent = q.text;
 
   const grid = $('hOptGrid');
   grid.innerHTML = '';
-  if (q.type === 'mc') {
+  if (q.type !== 'fib') {
     show(grid); hide($('hFibHint'));
     q.options.forEach((opt, i) => {
       const d = document.createElement('div');
@@ -581,7 +668,11 @@ function renderStageReveal(r) {
   let rows = '';
   if (d.type === 'mc') {
     const max = Math.max(1, ...d.counts);
-    rows = d.counts.map((c, i) => distRowHtml(esc(q.options[i]), c, max, OPT_COLORS[i % 6], cd.indices.includes(i), i)).join('');
+    const trapSet = cd.traps || [];
+    rows = d.counts.map((c, i) => {
+      const label = esc(q.options[i]) + (trapSet.includes(i) ? ' <span class="trap-mark">&#9888; tuzak</span>' : '');
+      return distRowHtml(label, c, max, OPT_COLORS[i % 6], cd.indices.includes(i), i);
+    }).join('');
     if (d.noAnswer > 0) rows += distRowHtml('Cevapsız', d.noAnswer, max, null, false, null);
   } else {
     const max = Math.max(1, ...d.top.map((b) => b.count), d.noAnswer || 0);

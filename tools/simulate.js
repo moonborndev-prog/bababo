@@ -50,6 +50,10 @@ const QUIZ = {
       accepted: ['İstanbul'], caseSensitive: false, typoTolerance: true },
     { type: 'mc', text: 'Soru 3: dogru sik A (manuel kapanis)', points: 250, timeLimit: 0,
       options: ['Evet', 'Hayir'], correct: [0] },
+    { type: 'mc', text: 'Soru 4: RISK sorusu, dogru sik B', points: 999, timeLimit: 0,
+      options: ['A', 'B'], correct: [1], risk: true, category: 'Tarih', riskZero: 70 },
+    { type: 'trap', text: 'Soru 5: TUZAK, dogru A, tuzak C', points: 200, timeLimit: 0,
+      options: ['DogruSik', 'NotrSik', 'TuzakSik'], correct: [0], traps: [2] },
   ],
 };
 
@@ -209,6 +213,117 @@ const QUIZ = {
   const r3 = await hostResult3;
   assert(r3.distribution.counts[0] === 40 && r3.distribution.counts[1] === 10, 'soru 3 dagilimi 40/10', r3.distribution.counts);
 
+  /* ---- Soru 4: RISK ---- */
+  console.log('\nSoru 4 (RISK: dogru +risk, yanlis -risk, girmeyene otomatik 1, 0 puanliya riskZero)');
+  // Skorlar su an: 1..40=500, 41..60=100, 61..70=150, 71..85=0
+
+  const wagerStartAll = Promise.all(players.map((p) => once(p.socket, 'wager:start')));
+  const w4 = await emit(host, 'host:start_question', { pin: PIN, hostToken: HTOKEN, index: 3 });
+  assert(w4.ok, 'risk (bahis) asamasi baslatildi', w4);
+  const wagerInfos = await wagerStartAll;
+
+  assert(wagerInfos[0].score === 500 && wagerInfos[0].maxWager === 500 && wagerInfos[0].forced === null && wagerInfos[0].category === 'Tarih',
+    'Oyuncu1 risk ekrani: puan 500, ust sinir 500, kategori geldi', wagerInfos[0]);
+  assert(wagerInfos[40].maxWager === 100, 'Oyuncu41 risk ust siniri 100', wagerInfos[40]);
+  assert(wagerInfos[70].forced === 70 && wagerInfos[70].score === 0, 'Oyuncu71 (0 puan) otomatik 70 icin oynuyor', wagerInfos[70]);
+
+  const wg = (p, amount) => emit(p.socket, 'player:wager', { pin: PIN, token: p.token, index: 3, amount });
+  const e0 = await wg(players[0], 0);
+  assert(!!e0.error, '0 riske etmek reddedildi', e0);
+  const e501 = await wg(players[0], 501);
+  assert(!!e501.error, 'puandan fazla risk reddedildi', e501);
+  const e150 = await wg(players[40], 150);
+  assert(!!e150.error, 'Oyuncu41 icin 150 risk reddedildi (puani 100)', e150);
+  const eZero = await wg(players[70], 10);
+  assert(!!eZero.error, '0 puanli takimin risk girmesi reddedildi (otomatik oynuyor)', eZero);
+
+  const first50 = await wg(players[2], 50);
+  const then200 = await wg(players[2], 200);
+  assert(first50.ok && then200.ok && then200.amount === 200, 'risk soru acilana kadar degistirilebiliyor (50 -> 200)', then200);
+
+  // Kohortlar: 1..20 -> 200 riske eder; 21..40 -> hepsini (500); 41..60 -> 100
+  await Promise.all(players.map(async (p) => {
+    if (p.i === 3) return; // zaten 200 girdi
+    if (p.i <= 20) await wg(p, 200);
+    else if (p.i <= 40) await wg(p, 500);
+    else if (p.i <= 60) await wg(p, 100);
+    // 61..70 hic risk girmiyor (otomatik 1), 71..85 zaten otomatik (0 puan)
+  }));
+
+  const q4StartAll = Promise.all(players.map((p) => once(p.socket, 'question:start')));
+  const open4 = await emit(host, 'host:start_question', { pin: PIN, hostToken: HTOKEN, index: 3 });
+  assert(open4.ok, 'risk sorusu acildi', open4);
+  const q4s = await q4StartAll;
+  assert(q4s[0].risk === true && q4s[0].yourWager && q4s[0].yourWager.amount === 200, 'Oyuncu1 soruda riskini goruyor (200)', q4s[0].yourWager);
+  assert(q4s[60].yourWager && q4s[60].yourWager.amount === 1, 'risk girmeyen Oyuncu61 otomatik 1 ile oynuyor', q4s[60].yourWager);
+  assert(q4s[70].yourWager && q4s[70].yourWager.zero === true && q4s[70].yourWager.plays === 70, 'Oyuncu71 zero modunda 70 icin oynuyor', q4s[70].yourWager);
+
+  await Promise.all(players.map(async (p) => {
+    const send = (v) => emit(p.socket, 'player:answer', { pin: PIN, token: p.token, index: 3, value: v });
+    if (p.i <= 20) await send(1);       // dogru: +200
+    else if (p.i <= 40) await send(0);  // yanlis: -500
+    else if (p.i <= 60) { /* cevap yok: -100 */ }
+    else if (p.i <= 65) await send(1);  // dogru: +1
+    else if (p.i <= 70) await send(0);  // yanlis: -1
+    else if (p.i <= 75) await send(1);  // dogru (zero): +70
+    // 76..85 cevap yok (zero): 0
+  }));
+  await sleep(400);
+  const hostResult4 = once(host, 'question:result:host', 8000);
+  await emit(host, 'host:close_question', { pin: PIN, hostToken: HTOKEN });
+  const r4 = await hostResult4;
+  assert(r4.distribution.counts[1] === 30 && r4.distribution.counts[0] === 25 && r4.distribution.noAnswer === 30,
+    'risk sorusu dagilimi 30 dogru sik / 25 yanlis sik / 30 cevapsiz', r4.distribution);
+
+  await sleep(300);
+  const p1r4 = players[0].results.find((r) => r.index === 3);
+  assert(p1r4 && p1r4.gain === 200 && p1r4.score === 700, 'Oyuncu1: +200 ile 700', p1r4);
+  const p21r4 = players[20].results.find((r) => r.index === 3);
+  assert(p21r4 && p21r4.gain === -500 && p21r4.score === 0, 'Oyuncu21: hepsini riske etti, -500 ile 0', p21r4);
+  const p41r4 = players[40].results.find((r) => r.index === 3);
+  assert(p41r4 && p41r4.answered === false && p41r4.gain === -100 && p41r4.score === 0, 'Oyuncu41: cevap vermedi, riski gitti (-100)', p41r4);
+  const p66r4 = players[65].results.find((r) => r.index === 3);
+  assert(p66r4 && p66r4.gain === -1 && p66r4.score === 149, 'Oyuncu66: otomatik 1 risk, yanlis, 149', p66r4);
+  const p71r4 = players[70].results.find((r) => r.index === 3);
+  assert(p71r4 && p71r4.gain === 70 && p71r4.score === 70, 'Oyuncu71: zero modunda dogru, +70', p71r4);
+  const p76r4 = players[75].results.find((r) => r.index === 3);
+  assert(p76r4 && p76r4.gain === 0 && p76r4.score === 0, 'Oyuncu76: zero modunda cevapsiz, kayip yok', p76r4);
+
+  /* ---- Soru 5: TUZAK ---- */
+  console.log('\nSoru 5 (TUZAK: dogru +200, tuzak -200, notr yanlis 0)');
+  // Skorlar su an: 1..20=700, 21..60=0, 61..65=151, 66..70=149, 71..75=70, 76..85=0
+
+  const q5start = once(players[0].socket, 'question:start');
+  await emit(host, 'host:start_question', { pin: PIN, hostToken: HTOKEN, index: 4 });
+  const q5 = await q5start;
+  assert(q5.type === 'trap' && Array.isArray(q5.options) && q5.options.length === 3, 'tuzak sorusu secenekleriyle acildi', q5.type);
+
+  await Promise.all(players.map(async (p) => {
+    const send = (v) => emit(p.socket, 'player:answer', { pin: PIN, token: p.token, index: 4, value: v });
+    if (p.i <= 10) await send(0);        // dogru: +200
+    else if (p.i <= 30) await send(2);   // tuzak: -200 (21..30 eksiye duser)
+    else if (p.i <= 40) await send(1);   // notr yanlis: 0
+    // 41..85 cevap yok: 0
+  }));
+  await sleep(400);
+  const hostResult5 = once(host, 'question:result:host', 8000);
+  await emit(host, 'host:close_question', { pin: PIN, hostToken: HTOKEN });
+  const r5 = await hostResult5;
+  assert(r5.distribution.counts[0] === 10 && r5.distribution.counts[2] === 20 && r5.distribution.counts[1] === 10 && r5.distribution.noAnswer === 45,
+    'tuzak dagilimi 10 dogru / 20 tuzak / 10 notr / 45 cevapsiz', r5.distribution);
+  assert(r5.correctDisplay.traps && r5.correctDisplay.traps.includes(2) && r5.correctDisplay.trapTexts[0] === 'TuzakSik',
+    'tuzak siklari host aciklamasinda isaretli', r5.correctDisplay);
+
+  await sleep(300);
+  const p1r5 = players[0].results.find((r) => r.index === 4);
+  assert(p1r5 && p1r5.gain === 200 && p1r5.score === 900, 'Oyuncu1: dogru, +200 ile 900', p1r5);
+  const p11r5 = players[10].results.find((r) => r.index === 4);
+  assert(p11r5 && p11r5.trapped === true && p11r5.gain === -200 && p11r5.score === 500, 'Oyuncu11: tuzaga dustu, -200 ile 500', p11r5);
+  const p21r5 = players[20].results.find((r) => r.index === 4);
+  assert(p21r5 && p21r5.gain === -200 && p21r5.score === -200, 'Oyuncu21: tuzakla eksiye dustu (-200)', p21r5);
+  const p31r5 = players[30].results.find((r) => r.index === 4);
+  assert(p31r5 && !p31r5.correct && !p31r5.trapped && p31r5.gain === 0, 'Oyuncu31: notr yanlis, puan degismedi', p31r5);
+
   /* ---- final ---- */
   console.log('\nFinal');
   const finalH = once(host, 'game:ended');
@@ -221,6 +336,16 @@ const QUIZ = {
     if (i <= 60) s += 100;
     if (i <= 40 || (i >= 61 && i <= 70)) s += 150;
     if (i <= 40) s += 250;
+    // Soru 4 (risk):
+    if (i <= 20) s += 200;
+    else if (i <= 40) s -= 500;
+    else if (i <= 60) s -= 100;
+    else if (i <= 65) s += 1;
+    else if (i <= 70) s -= 1;
+    else if (i <= 75) s += 70;
+    // Soru 5 (tuzak):
+    if (i <= 10) s += 200;
+    else if (i <= 30) s -= 200;
     return s;
   };
   const expectedRank = (i) => {
@@ -239,10 +364,12 @@ const QUIZ = {
   assert(fin.full.length === N, 'final listesinde ' + N + ' oyuncu var', fin.full.length);
   assert(scoreOk, 'tum skorlar beklendigi gibi');
   assert(rankOk, 'tum siralar beklendigi gibi (beraberlik dahil)');
-  assert(fin.podium.length === 3 && fin.podium.every((p) => p.score === 500), 'podyum 500 puanlik oyunculardan olusuyor', fin.podium);
+  assert(fin.podium.length === 3 && fin.podium.every((p) => p.score === 900), 'podyum 900 puanlik oyunculardan olusuyor', fin.podium);
 
   const pf = players[75].final; // Oyuncu76: 0 puan
-  assert(pf && pf.you && pf.you.score === 0 && pf.you.rank === 71, 'Oyuncu76 finalde 0 puan / sira 71', pf && pf.you);
+  assert(pf && pf.you && pf.you.score === 0 && pf.you.rank === 36, 'Oyuncu76 finalde 0 puan / sira 36', pf && pf.you);
+  const pneg = players[20].final; // Oyuncu21: eksi puan
+  assert(pneg && pneg.you && pneg.you.score === -200 && pneg.you.rank === 76, 'Oyuncu21 finalde -200 / sira 76 (eksi skor destegi)', pneg && pneg.you);
 
   /* ---- host yeniden baglanma (sayfa yenileme) ---- */
   const host2 = await connect();

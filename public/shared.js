@@ -117,6 +117,11 @@ function setRowRank(el, rank) {
   el.querySelector('.rank').textContent = rank;
 }
 
+function gainBadgeHtml(g) {
+  if (!g) return '';
+  return '<span class="gain-badge num' + (g < 0 ? ' neg' : '') + '">' + (g > 0 ? '+' : '') + fmtPts(g) + '</span>';
+}
+
 function countUp(el, from, to, dur, token) {
   const t0 = performance.now();
   function frame(t) {
@@ -158,7 +163,7 @@ function renderLeaderboardAnimated(listEl, rows, opts) {
     } else {
       setRowRank(el, r.rank);
       el.querySelector('.pts').textContent = fmtPts(r.score);
-      if (r.gain > 0) el.querySelector('.badge-slot').innerHTML = '<span class="gain-badge num">+' + fmtPts(r.gain) + '</span>';
+      el.querySelector('.badge-slot').innerHTML = gainBadgeHtml(r.gain);
     }
     listEl.appendChild(el);
     items.push({ row: r, el });
@@ -177,7 +182,7 @@ function renderLeaderboardAnimated(listEl, rows, opts) {
     } else {
       setRowRank(el, youAppended.rank);
       el.querySelector('.pts').textContent = fmtPts(youAppended.score);
-      if (youAppended.gain > 0) el.querySelector('.badge-slot').innerHTML = '<span class="gain-badge num">+' + fmtPts(youAppended.gain) + '</span>';
+      el.querySelector('.badge-slot').innerHTML = gainBadgeHtml(youAppended.gain);
     }
     listEl.appendChild(el);
   }
@@ -190,12 +195,12 @@ function renderLeaderboardAnimated(listEl, rows, opts) {
     let stagger = 0;
     for (const it of items) {
       const g = it.row.gain || 0;
-      if (g <= 0) continue;
+      if (!g) continue;
       const slot = it.el.querySelector('.badge-slot');
       const pts = it.el.querySelector('.pts');
       setTimeout(() => {
         if (token.cancelled) return;
-        slot.innerHTML = '<span class="gain-badge num">+' + fmtPts(g) + '</span>';
+        slot.innerHTML = gainBadgeHtml(g);
         countUp(pts, it.row.prevScore || 0, it.row.score, 750, token);
       }, stagger);
       stagger += 120;

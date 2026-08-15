@@ -412,6 +412,15 @@ textarea.input { resize: vertical; min-height: 64px; border-radius: var(--radius
   padding: 3px 10px;
   animation: gainPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
+.lb-row .gain-badge.neg { background: var(--bad); color: #3c0d0d; }
+
+.risk-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
 
 .podium {
   display: flex;
@@ -542,6 +551,20 @@ textarea.input { resize: vertical; min-height: 64px; border-radius: var(--radius
   cursor: pointer;
 }
 .correct-toggle.on { background: rgba(63, 214, 140, 0.14); border-color: var(--good); color: var(--good); }
+
+.trap-toggle {
+  width: 40px; height: 40px; flex: 0 0 40px;
+  border-radius: 11px;
+  border: 1.5px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.trap-toggle.on { background: rgba(239, 111, 111, 0.14); border-color: var(--bad); color: var(--bad); }
+
+.trap-mark { color: var(--bad); font-weight: 700; font-size: 13px; }
 
 .icon-btn {
   width: 36px; height: 36px; flex: 0 0 36px;

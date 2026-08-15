@@ -50,11 +50,36 @@
         </div>
       </div>
 
+      <!-- Risk (bahis) -->
+      <div id="v-wager" class="view hidden">
+        <div class="card centered" style="padding:28px 20px;">
+          <div class="risk-label">Risk Turu</div>
+          <p class="muted" id="wgCatLine" style="margin-top:8px;"></p>
+          <p class="tiny" style="margin-top:16px; letter-spacing:0.12em; text-transform:uppercase;">Puanın</p>
+          <div id="wgScore" class="num" style="font-size:46px; font-weight:700; color:var(--accent); line-height:1.1;"></div>
+          <div id="wgForm" style="margin-top:14px;">
+            <p class="muted">Kaç puan riske ediyorsun?</p>
+            <div style="display:flex; gap:8px; justify-content:center; margin:10px 0;">
+              <button type="button" class="btn btn-sm wg-quick" data-f="0.25">%25</button>
+              <button type="button" class="btn btn-sm wg-quick" data-f="0.5">Yarısı</button>
+              <button type="button" class="btn btn-sm wg-quick" data-f="1">Hepsi</button>
+            </div>
+            <input id="wgInput" class="input num" inputmode="numeric" autocomplete="off" style="text-align:center; font-size:24px; font-weight:700;">
+            <button id="wgSubmit" class="btn btn-primary btn-big" style="margin-top:12px; width:100%;">Riske Et</button>
+            <p id="wgStatus" class="tiny" style="margin-top:10px;"></p>
+          </div>
+          <div id="wgForced" class="hidden" style="margin-top:14px;">
+            <p style="font-weight:600;" id="wgForcedText"></p>
+            <p class="muted tiny">Doğru bilirsen kazanırsın, yanlışta puanın değişmez. Soruyu bekle.</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Soru -->
       <div id="v-question" class="view hidden">
         <div class="q-header">
           <span class="chip">Soru <strong id="qNo" class="num"></strong></span>
-          <span class="chip"><strong id="qPts" class="num"></strong> puan</span>
+          <span class="chip"><strong id="qPts" class="num"></strong></span>
         </div>
         <div class="timer-track"><div id="timerFill" class="timer-fill"></div></div>
         <div id="timerNum" class="timer-num num"></div>

@@ -1,7 +1,7 @@
 /* BaBaBo Quiz - oyuncu istemcisi */
 'use strict';
 
-const VIEWS = ['v-join', 'v-lobby', 'v-question', 'v-waiting', 'v-result', 'v-leaderboard', 'v-final', 'v-info'];
+const VIEWS = ['v-join', 'v-lobby', 'v-wager', 'v-question', 'v-waiting', 'v-result', 'v-leaderboard', 'v-final', 'v-info'];
 const socket = io();
 
 let session = null; // { pin, token, nickname }
@@ -135,6 +135,8 @@ function applySnapshot(snap) {
     $('lobbyCount').textContent = snap.lobby ? snap.lobby.count : 1;
     renderTeams(snap.lobby ? snap.lobby.players : []);
     showView(VIEWS, 'v-lobby');
+  } else if (snap.state === 'wager' && snap.wager) {
+    renderWager(snap.wager);
   } else if (snap.state === 'question' && snap.question) {
     renderQuestion(snap.question, snap.answered);
   } else if (snap.state === 'reveal' && snap.result) {
@@ -150,6 +152,59 @@ function applySnapshot(snap) {
   }
 }
 
+/* ------------------------------------------------------------- risk */
+
+let wagerState = null; // { index, maxWager }
+
+function renderWager(w) {
+  timer.stop();
+  wagerState = { index: w.index, maxWager: w.maxWager };
+  $('wgCatLine').textContent = w.category
+    ? 'Sıradaki sorunun kategorisi: ' + w.category
+    : 'Sıradaki soru için riskini belirle';
+  $('wgScore').textContent = fmtPts(w.score);
+
+  if (w.forced != null) {
+    hide($('wgForm'));
+    show($('wgForced'));
+    $('wgForcedText').textContent = 'Puanın olmadığı için bu turda ' + fmtPts(w.forced) + ' puan için oynuyorsun.';
+  } else {
+    show($('wgForm'));
+    hide($('wgForced'));
+    $('wgInput').value = w.current != null ? w.current : '';
+    $('wgStatus').textContent = w.current != null
+      ? 'Riskin alındı: ' + fmtPts(w.current) + ' puan. Soru açılana kadar değiştirebilirsin.'
+      : 'En az 1, en fazla ' + fmtPts(w.maxWager) + ' puan.';
+  }
+  showView(VIEWS, 'v-wager');
+  if (w.forced == null) setTimeout(() => $('wgInput').focus(), 250);
+}
+
+for (const b of document.querySelectorAll('.wg-quick')) {
+  b.addEventListener('click', () => {
+    if (!wagerState) return;
+    const f = Number(b.dataset.f);
+    $('wgInput').value = Math.max(1, Math.floor(wagerState.maxWager * f));
+  });
+}
+
+$('wgInput').addEventListener('input', () => {
+  $('wgInput').value = $('wgInput').value.replace(/\D/g, '').slice(0, 9);
+});
+
+$('wgSubmit').addEventListener('click', () => {
+  if (!wagerState) return;
+  const amt = Math.round(Number($('wgInput').value));
+  if (!Number.isFinite(amt) || amt < 1) { toast('En az 1 puan riske etmelisin.', true); return; }
+  if (amt > wagerState.maxWager) { toast('En fazla ' + fmtPts(wagerState.maxWager) + ' puan riske edebilirsin.', true); return; }
+  socket.emit('player:wager', { pin: session.pin, token: session.token, index: wagerState.index, amount: amt }, (res) => {
+    if (!res || res.error) { toast(res ? res.error : 'Sunucuya ulaşılamadı.', true); return; }
+    $('wgStatus').textContent = 'Riskin alındı: ' + fmtPts(res.amount) + ' puan. Soru açılana kadar değiştirebilirsin.';
+  });
+});
+
+socket.on('wager:start', (w) => renderWager(w));
+
 /* ------------------------------------------------------------- soru */
 
 function lockQuestionInputs() {
@@ -160,16 +215,29 @@ function lockQuestionInputs() {
 }
 
 function renderQuestion(q, alreadyAnswered) {
+  wagerState = null;
   current = { index: q.index, answered: !!alreadyAnswered, type: q.type };
   $('qNo').textContent = (q.index + 1) + ' / ' + q.total;
-  $('qPts').textContent = fmtPts(q.points);
+  if (q.risk) {
+    const w = q.yourWager;
+    if (w && w.zero) $('qPts').textContent = 'Risk yok, ' + fmtPts(w.plays) + ' için oynuyorsun';
+    else if (w) $('qPts').textContent = 'Riskin: ' + fmtPts(w.amount);
+    else $('qPts').textContent = 'RİSK';
+    $('qPts').parentElement.style.borderColor = 'rgba(227,196,127,0.5)';
+  } else if (q.type === 'trap') {
+    $('qPts').textContent = fmtPts(q.points) + ' puan | Dikkat, tuzak var!';
+    $('qPts').parentElement.style.borderColor = 'rgba(239,111,111,0.5)';
+  } else {
+    $('qPts').textContent = fmtPts(q.points) + ' puan';
+    $('qPts').parentElement.style.borderColor = '';
+  }
   $('qText').textContent = q.text;
 
   const grid = $('optGrid');
   const fib = $('fibForm');
   grid.innerHTML = '';
 
-  if (q.type === 'mc') {
+  if (q.type !== 'fib') {
     show(grid); hide(fib);
     grid.classList.toggle('single', q.options.length <= 3 && q.options.some((o) => o.length > 24));
     q.options.forEach((opt, i) => {
@@ -205,7 +273,7 @@ function submitAnswer(value, clickedBtn) {
   if (current.answered) return;
   current.answered = true;
 
-  if (current.type === 'mc') {
+  if (current.type !== 'fib') {
     for (const b of document.querySelectorAll('#optGrid .opt-btn')) {
       b.disabled = true;
       if (b !== clickedBtn) b.classList.add('dim');
@@ -226,7 +294,7 @@ function submitAnswer(value, clickedBtn) {
       if (current.answered && !$('v-question').classList.contains('hidden')) {
         showView(VIEWS, 'v-waiting');
       }
-    }, current.type === 'mc' ? 350 : 0);
+    }, current.type !== 'fib' ? 350 : 0);
   });
 }
 
@@ -251,11 +319,15 @@ function renderResult(r) {
   } else if (r.correct) {
     v.textContent = 'DOĞRU!';
     v.className = 'verdict ok';
+  } else if (r.trapped) {
+    v.textContent = 'TUZAĞA DÜŞTÜN!';
+    v.className = 'verdict no';
   } else {
     v.textContent = 'YANLIŞ';
     v.className = 'verdict no';
   }
-  $('resGain').textContent = r.gain > 0 ? '+' + fmtPts(r.gain) + ' puan' : '+0 puan';
+  $('resGain').textContent = (r.gain > 0 ? '+' : '') + fmtPts(r.gain) + ' puan';
+  $('resGain').style.color = r.gain < 0 ? 'var(--bad)' : '';
   $('resScore').textContent = fmtPts(r.score);
   $('resRank').textContent = r.rank ? r.rank + ' / ' + r.playerCount : '-';
 
@@ -267,6 +339,9 @@ function renderResult(r) {
   if (r.correctDisplay) {
     if (r.correctDisplay.type === 'mc') {
       html += 'Doğru cevap: ' + r.correctDisplay.texts.map(esc).join(' / ');
+      if (r.correctDisplay.trapTexts && r.correctDisplay.trapTexts.length) {
+        html += '<div style="margin-top:4px; color:#f3a1a1;">Tuzak: ' + r.correctDisplay.trapTexts.map(esc).join(' / ') + '</div>';
+      }
     } else {
       html += 'Doğru cevap: ' + r.correctDisplay.answers.slice(0, 3).map(esc).join(' / ');
     }

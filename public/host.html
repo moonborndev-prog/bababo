@@ -61,6 +61,7 @@
       <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
         <button id="btnAddMc" class="btn">+ Çoktan Seçmeli Soru</button>
         <button id="btnAddFib" class="btn">+ Boşluk Doldurma Sorusu</button>
+        <button id="btnAddTrap" class="btn">+ Tuzak Sorusu</button>
       </div>
     </div>
 
@@ -97,11 +98,25 @@
         <div id="playerChips" class="player-chips"></div>
       </div>
 
+      <!-- Risk (bahis) asamasi -->
+      <div id="s-wager" class="hidden">
+        <div class="centered" style="padding-top:20px;">
+          <div class="risk-label" style="font-size:20px;">Risk Turu</div>
+          <p class="muted" style="font-size:18px;" id="hWgCat"></p>
+          <div class="card" style="max-width:420px; margin:26px auto 0; text-align:center;">
+            <div style="font-size:52px; font-weight:700; color:var(--accent);" class="num" id="hWgDecided">0 / 0</div>
+            <div class="muted">takım riskini belirledi</div>
+            <p class="tiny" id="hWgZero" style="margin-top:8px;"></p>
+          </div>
+          <p class="muted" style="margin-top:20px; animation:pulse 2.2s infinite;">Takımlar telefonlarından risklerini giriyor...</p>
+        </div>
+      </div>
+
       <!-- Soru -->
       <div id="s-question" class="hidden">
         <div class="q-header">
           <span class="chip">Soru <strong id="hQNo" class="num"></strong></span>
-          <span class="chip"><strong id="hQPts" class="num"></strong> puan</span>
+          <span class="chip"><strong id="hQPts" class="num"></strong></span>
           <span class="chip">Cevaplayan: <strong id="hAnswered" class="num">0 / 0</strong></span>
         </div>
         <div class="timer-track"><div id="hTimerFill" class="timer-fill"></div></div>

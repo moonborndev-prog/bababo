@@ -37,9 +37,11 @@ Render'ın ücretsiz planı bu iş için yeterli. Kart bilgisi istemez.
 1. `/host` adresine gir, şifreni yaz.
 2. "Örnek Quiz" ile hemen deneyebilir ya da "Yeni Quiz" ile kendi sorularını hazırlayabilirsin. Her soruda puanı ve süreyi ayrı ayrı belirlersin (süreye 0 yazarsan sen kapatana kadar açık kalır).
 3. Boşluk doldurma sorularında kabul edilen cevapları alt alta yazarsın. Büyük/küçük harf ve fazla boşluklar önemsenmez, istersen "1 harflik yazım hatasını kabul et" seçeneğini de açarsın. Türkçe karakterler (İ/ı dahil) doğru işlenir.
-4. "Başlat" deyince ekrana PIN ve QR kodu gelir. Bu ekranı projeksiyona yansıt, katılımcılar telefonlarından girsin.
-5. Soruları sen ilerletirsin: soru açılır, herkes cevaplayınca ya da süre bitince kapanır, doğru cevap ve cevap dağılımı ekrana gelir, ardından skor tablosunu gösterip sonraki soruya geçersin.
-6. Oyun sonunda podyum ve tüm sıralama görünür, sonuçları CSV olarak indirebilirsin.
+4. İstediğin soruyu "Risk sorusu" yapabilirsin. Risk sorusu açılmadan önce takımların telefonuna risk ekranı gelir: mevcut puanları ve senin girdiğin kategori gösterilir, en az 1 en fazla puanları kadar risk girerler (soru açılana kadar değiştirebilirler). Doğru cevap riske edilen kadar kazandırır, yanlış cevap ve cevapsızlık aynı miktarı kaybettirir. Risk girmeyen takım otomatik 1 puanla oynar. Puanı 0 olan takım, editörde belirlediğin değer kadar puan için oynar: doğruda kazanır, yanlışta 0'ın altına inmez. Takımlar risklerini girerken sunucu ekranında sayaç görünür, sen "Soruyu Göster" deyince soru açılır.
+5. "Tuzak Sorusu" ile şıklı ama cezalı sorular hazırlayabilirsin: yeşil onayla doğru şıkkı, turuncu ünlemle tuzak şıkkı işaretlersin. Doğruyu bilen sorunun puanını kazanır, tuzağı seçen aynı puanı kaybeder, diğer yanlışlar puan değiştirmez. Takımlar soruda "Dikkat, tuzak var!" uyarısını görür ama hangisinin tuzak olduğunu bilmez. Tuzakla skor eksiye düşebilir.
+6. "Başlat" deyince ekrana PIN ve QR kodu gelir. Bu ekranı projeksiyona yansıt, katılımcılar telefonlarından girsin.
+7. Soruları sen ilerletirsin: soru açılır, herkes cevaplayınca ya da süre bitince kapanır, doğru cevap ve cevap dağılımı ekrana gelir, ardından skor tablosunu gösterip sonraki soruya geçersin.
+8. Oyun sonunda podyum ve tüm sıralama görünür, sonuçları CSV olarak indirebilirsin.
 
 ## Bilinmesi gerekenler
 
