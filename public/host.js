@@ -1,4 +1,4 @@
-/* Canli Quiz - host (sunucu) istemcisi: quiz editoru + oyun yonetimi */
+/* BaBaBo Quiz - host (sunucu) istemcisi: quiz editoru + oyun yonetimi */
 'use strict';
 
 const VIEWS = ['v-login', 'v-dash', 'v-editor', 'v-stage'];
@@ -447,7 +447,7 @@ function applyHostSnapshot(snap) {
   if (snap.state === 'lobby') renderStageLobby(snap.lobby);
   else if (snap.state === 'question') renderStageQuestion(snap.question);
   else if (snap.state === 'reveal') renderStageReveal(snap.reveal);
-  else if (snap.state === 'leaderboard') renderStageLeaderboard(snap.leaderboardData);
+  else if (snap.state === 'leaderboard') renderStageLeaderboard(snap.leaderboardData, true);
   else if (snap.state === 'ended') renderStageFinal(snap.final);
 }
 
@@ -485,7 +485,7 @@ function renderStageLobby(lobby) {
         hostAction('host:start_question', { index: 0 });
       } else {
         $('lobbyCount2').dataset.force = '1';
-        toast('Henüz katılan yok. Yine de başlatmak için tekrar tıkla.', true);
+        toast('Henüz katılan takım yok. Yine de başlatmak için tekrar tıkla.', true);
       }
     } },
   ]);
@@ -494,8 +494,8 @@ function renderStageLobby(lobby) {
 function renderPlayerChips(players) {
   const wrap = $('playerChips');
   wrap.innerHTML = (players || []).map((p) => (
-    '<span class="pchip' + (p.connected ? '' : ' off') + '">' + esc(p.nickname) +
-    (p.token ? '<button class="kick" data-token="' + p.token + '" title="Oyuncuyu çıkar">&#215;</button>' : '') +
+    '<span class="team-chip' + (p.connected ? '' : ' off') + '"><span class="dot"></span>' + esc(p.nickname) +
+    (p.token ? '<button class="kick" data-token="' + p.token + '" title="Takımı çıkar">&#215;</button>' : '') +
     '</span>'
   )).join('');
 }
@@ -602,17 +602,20 @@ function renderStageReveal(r) {
 
 /* --- skor tablosu --- */
 
-function renderStageLeaderboard(data) {
+let lastAnimatedLb = -1;
+
+function renderStageLeaderboard(data, forceStatic) {
   stage.state = 'leaderboard';
   $('hLbProgress').textContent = (data.questionIndex + 1) + '. soru sonrası' + (data.isLast ? ' (son soru)' : '');
-  $('hLbList').innerHTML = data.top.map((r, i) => (
-    '<div class="lb-row' + (r.rank <= 3 ? ' r' + r.rank : '') + '" style="animation-delay:' + (i * 80) + 'ms">' +
-      '<div class="rank num">' + r.rank + '</div>' +
-      '<div class="name">' + esc(r.nickname) + '</div>' +
-      (r.gain > 0 ? '<div class="delta num">+' + fmtPts(r.gain) + '</div>' : '') +
-      '<div class="pts num">' + fmtPts(r.score) + '</div>' +
-    '</div>'
-  )).join('') || '<p class="centered muted">Henüz oyuncu yok.</p>';
+
+  const animate = !forceStatic && data.questionIndex !== lastAnimatedLb;
+  if (animate) lastAnimatedLb = data.questionIndex;
+
+  if (!data.top.length) {
+    $('hLbList').innerHTML = '<p class="centered muted">Henüz takım yok.</p>';
+  } else {
+    renderLeaderboardAnimated($('hLbList'), data.top, { animate });
+  }
 
   setStage('s-leaderboard');
   const btns = [];
@@ -626,7 +629,7 @@ function renderStageLeaderboard(data) {
 function renderStageFinal(f) {
   stage.state = 'ended';
   stage.lastFinal = f;
-  $('hFinalTitle').textContent = f.title + ' | ' + f.playerCount + ' oyuncu';
+  $('hFinalTitle').textContent = f.title + ' | ' + f.playerCount + ' takım';
 
   const order = [1, 0, 2];
   let cols = '';
@@ -642,7 +645,7 @@ function renderStageFinal(f) {
   $('hPodium').innerHTML = cols;
 
   const full = f.full || f.top || [];
-  $('hFullTable').innerHTML = '<tr><th>Sıra</th><th>Takma Ad</th><th>Puan</th></tr>' +
+  $('hFullTable').innerHTML = '<tr><th>Sıra</th><th>Takım</th><th>Puan</th></tr>' +
     full.map((r) => '<tr><td class="num">' + r.rank + '</td><td>' + esc(r.nickname) + '</td><td class="num">' + fmtPts(r.score) + '</td></tr>').join('');
 
   setStage('s-final');
@@ -656,7 +659,7 @@ $('btnCsv').addEventListener('click', () => {
   const f = stage.lastFinal;
   if (!f) return;
   const full = f.full || f.top || [];
-  const lines = ['Sıra;Takma Ad;Puan'];
+  const lines = ['Sıra;Takım;Puan'];
   for (const r of full) lines.push(r.rank + ';"' + String(r.nickname).replace(/"/g, '""') + '";' + r.score);
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');

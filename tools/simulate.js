@@ -143,6 +143,8 @@ const QUIZ = {
   const lbh1 = await lbH;
   assert(lb1.you && lb1.you.rank === 1 && lb1.you.score === 100, 'oyuncu skor tablosunda kendini goruyor', lb1.you);
   assert(lbh1.top.length === 10 && lbh1.top.every((r) => r.score === 100), 'host top10 tutarli', lbh1.top && lbh1.top[0]);
+  assert(lb1.you.prevScore === 0 && lb1.you.prevRank === 1 && lb1.you.gain === 100, 'animasyon verisi: oyuncunun onceki skoru/sirasi geldi', lb1.you);
+  assert(lbh1.top.every((r) => r.prevScore === 0 && r.prevRank === 1 && r.score === r.prevScore + r.gain), 'animasyon verisi: top10 once/sonra tutarli', lbh1.top[0]);
 
   /* ---- Soru 2: bosluk doldurma ---- */
   console.log('\nSoru 2 (bosluk doldurma, 8 sn)');

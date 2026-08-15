@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#0e1026">
-  <title>Canlı Quiz</title>
+  <meta name="theme-color" content="#0a0a0c">
+  <title>BaBaBo Quiz</title>
   <link rel="stylesheet" href="/style.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle fill='%237c6cff' cx='12' cy='12' r='11'/%3E%3Ctext x='12' y='17' font-size='13' font-weight='bold' text-anchor='middle' fill='white' font-family='sans-serif'%3E%3F%3C/text%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" href="/img/favicon.png">
 </head>
 <body>
   <div id="connBanner" class="conn-banner hidden">Bağlantı koptu, yeniden bağlanılıyor...</div>
@@ -14,7 +14,7 @@
   <div class="p-wrap">
     <div class="p-topbar">
       <div>
-        <div class="logo">Canlı Quiz</div>
+        <img id="topLogo" src="/img/logo-line.png" alt="BaBaBo Quiz" class="logo-img logo-line hidden">
       </div>
       <div id="meBar" class="hidden" style="display:flex; gap:8px; align-items:center;">
         <span class="chip"><strong id="meName"></strong></span>
@@ -27,11 +27,11 @@
       <!-- Katilim -->
       <div id="v-join" class="view">
         <div class="card join-card">
-          <h2>Oyuna Katıl</h2>
-          <p class="muted" id="joinSub">Ekrandaki PIN kodunu ve adını yaz</p>
+          <img src="/img/logo-stack.png" alt="BaBaBo Quiz" class="logo-img join-logo">
+          <p class="muted" id="joinSub">Ekrandaki PIN kodunu ve takım adını yaz</p>
           <div style="margin-top:18px; display:flex; flex-direction:column; gap:12px;">
             <input id="inPin" class="input pin-input" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="PIN">
-            <input id="inName" class="input" maxlength="20" autocomplete="off" placeholder="Takma adın">
+            <input id="inName" class="input" maxlength="20" autocomplete="off" placeholder="Takım adın">
             <button id="btnJoin" class="btn btn-primary btn-big">Katıl</button>
           </div>
           <div id="joinErr" class="error-box hidden"></div>
@@ -40,11 +40,12 @@
 
       <!-- Lobi -->
       <div id="v-lobby" class="view hidden">
-        <div class="card centered" style="padding:34px 22px;">
+        <div class="card centered" style="padding:30px 20px;">
           <h2 id="lobbyTitle"></h2>
-          <p style="font-size:20px; font-weight:800; margin-top:14px;">İçerdesin, <span id="lobbyName"></span>!</p>
-          <p class="muted">Adını sunucu ekranında görmelisin. Oyunun başlamasını bekle.</p>
-          <p class="chip" style="margin-top:16px;">Katılan: <strong id="lobbyCount" class="num">0</strong></p>
+          <p style="font-size:19px; font-weight:700; margin-top:12px;">İçerdesin, <span id="lobbyName"></span>!</p>
+          <p class="muted" style="animation:pulse 2.2s infinite;">Oyunun başlamasını bekle</p>
+          <p class="team-count" style="margin-top:18px;"><strong id="lobbyCount" class="num">0</strong> takım katıldı</p>
+          <div id="teamGrid" class="team-grid"></div>
         </div>
       </div>
 

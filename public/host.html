@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0e1026">
-  <title>Canlı Quiz | Sunucu Paneli</title>
+  <meta name="theme-color" content="#0a0a0c">
+  <title>BaBaBo Quiz | Sunucu Paneli</title>
   <link rel="stylesheet" href="/style.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle fill='%237c6cff' cx='12' cy='12' r='11'/%3E%3Ctext x='12' y='17' font-size='13' font-weight='bold' text-anchor='middle' fill='white' font-family='sans-serif'%3E%3F%3C/text%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" href="/img/favicon.png">
 </head>
 <body>
   <div id="connBanner" class="conn-banner hidden">Bağlantı koptu, yeniden bağlanılıyor...</div>
@@ -14,7 +14,7 @@
   <div class="h-wrap">
     <div class="h-header">
       <div>
-        <div class="logo">Canlı Quiz</div>
+        <img src="/img/logo-line.png" alt="BaBaBo Quiz" class="logo-img logo-line" style="height:34px;">
         <div class="logo-sub">Sunucu Paneli</div>
       </div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -81,16 +81,17 @@
       <!-- Lobi -->
       <div id="s-lobby" class="hidden">
         <div class="pin-hero">
+          <img src="/img/logo-stack.png" alt="BaBaBo Quiz" class="logo-img stage-logo">
           <div class="label">Katılmak için</div>
-          <div id="joinUrl" style="font-size:clamp(18px,3.5vw,30px); font-weight:800; color:#cfd6ff;"></div>
-          <div class="label" style="margin-top:14px;">Oyun PIN kodu</div>
+          <div id="joinUrl" class="join-url"></div>
+          <div class="label" style="margin-top:18px;">Oyun PIN kodu</div>
           <div class="pin num" id="bigPin"></div>
         </div>
         <div class="join-info">
           <div class="qr-box" id="qrBox"></div>
           <div class="card" style="min-width:220px; text-align:center;">
-            <div style="font-size:44px; font-weight:900;" class="num" id="lobbyCount2">0</div>
-            <div class="muted">oyuncu katıldı</div>
+            <div style="font-size:44px; font-weight:700; color:var(--accent);" class="num" id="lobbyCount2">0</div>
+            <div class="muted">takım katıldı</div>
           </div>
         </div>
         <div id="playerChips" class="player-chips"></div>
@@ -107,7 +108,7 @@
         <div id="hTimerNum" class="timer-num num"></div>
         <div id="hQText" class="q-text" style="font-size:clamp(24px,4vw,38px);"></div>
         <div id="hOptGrid" class="opt-grid"></div>
-        <div id="hFibHint" class="centered muted hidden" style="font-size:18px; margin-top:10px;">Oyuncular cevabı telefonlarına yazıyor...</div>
+        <div id="hFibHint" class="centered muted hidden" style="font-size:18px; margin-top:10px;">Takımlar cevabı telefonlarına yazıyor...</div>
       </div>
 
       <!-- Sonuc / dagilim -->
@@ -138,6 +139,7 @@
             <h3 style="margin:0;">Tüm Sonuçlar</h3>
             <button id="btnCsv" class="btn btn-sm">CSV İndir</button>
           </div>
+          <!-- tablo basliklari host.js icinde: Sıra / Takım / Puan -->
           <table class="table-plain" id="hFullTable"></table>
         </div>
       </div>

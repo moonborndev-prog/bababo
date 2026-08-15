@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Canli Quiz sunucusu
+ * BaBaBo Quiz sunucusu
  * Kahoot tarzi canli yarisma: PIN ile katilim, soru basina ozel puan,
  * bosluk doldurma destegi, sunucu tarafinda puanlama, canli skor tablosu.
  */
@@ -248,15 +248,34 @@ function sortedPlayers(game) {
 }
 
 // Standart yarisma siralamasi: esit puanlar ayni sirayi paylasir (1,2,2,4)
+// prevScore/prevRank: son puanlama oncesi durum (skor tablosu animasyonu icin)
 function leaderboard(game) {
   const arr = sortedPlayers(game);
+
+  const beforeArr = Array.from(game.players.values())
+    .map((p) => ({ token: p.token, prevScore: p.score - (p.lastGain || 0), joinedAt: p.joinedAt }));
+  beforeArr.sort((a, b) => b.prevScore - a.prevScore || a.joinedAt - b.joinedAt);
+  const prevRankMap = new Map();
+  let ps = null, pr = 0;
+  for (let i = 0; i < beforeArr.length; i++) {
+    const b = beforeArr[i];
+    const rank = (b.prevScore === ps) ? pr : i + 1;
+    ps = b.prevScore; pr = rank;
+    prevRankMap.set(b.token, { prevRank: rank, prevScore: b.prevScore });
+  }
+
   const rows = [];
   let prevScore = null, prevRank = 0;
   for (let i = 0; i < arr.length; i++) {
     const p = arr[i];
     const rank = (p.score === prevScore) ? prevRank : i + 1;
     prevScore = p.score; prevRank = rank;
-    rows.push({ rank, nickname: p.nickname, score: p.score, gain: p.lastGain || 0, token: p.token, connected: p.connected });
+    const before = prevRankMap.get(p.token) || { prevRank: rank, prevScore: p.score };
+    rows.push({
+      rank, nickname: p.nickname, score: p.score, gain: p.lastGain || 0,
+      prevRank: before.prevRank, prevScore: before.prevScore,
+      token: p.token, connected: p.connected,
+    });
   }
   return rows;
 }
@@ -267,7 +286,10 @@ function rankOf(rows, token) {
 }
 
 function stripRows(rows, n) {
-  return rows.slice(0, n).map((r) => ({ rank: r.rank, nickname: r.nickname, score: r.score, gain: r.gain }));
+  return rows.slice(0, n).map((r) => ({
+    rank: r.rank, nickname: r.nickname, score: r.score, gain: r.gain,
+    prevRank: r.prevRank, prevScore: r.prevScore,
+  }));
 }
 
 /* ------------------------------------------------------ soru akisi */
@@ -409,7 +431,13 @@ function showLeaderboard(game) {
   };
   for (const p of game.players.values()) {
     if (!p.connected || !p.socketId) continue;
-    io.to(p.socketId).emit('leaderboard', { ...payloadBase, you: { rank: rankOf(lb, p.token), score: p.score, gain: p.lastGain || 0 } });
+    const mine = lb.find((r) => r.token === p.token);
+    io.to(p.socketId).emit('leaderboard', {
+      ...payloadBase,
+      you: mine
+        ? { nickname: p.nickname, rank: mine.rank, score: mine.score, gain: mine.gain, prevRank: mine.prevRank, prevScore: mine.prevScore }
+        : { nickname: p.nickname, rank: null, score: p.score, gain: p.lastGain || 0 },
+    });
   }
   if (game.hostSocketId) io.to(game.hostSocketId).emit('leaderboard', payloadBase);
   return { ok: true };
@@ -475,9 +503,12 @@ function playerSnapshot(game, p) {
   }
   if (game.state === 'leaderboard') {
     const lb = leaderboard(game);
+    const mine = lb.find((r) => r.token === p.token);
     snap.leaderboardData = {
       top: stripRows(lb, 10),
-      you: { rank: rankOf(lb, p.token), score: p.score, gain: p.lastGain || 0 },
+      you: mine
+        ? { nickname: p.nickname, rank: mine.rank, score: mine.score, gain: mine.gain, prevRank: mine.prevRank, prevScore: mine.prevScore }
+        : { nickname: p.nickname, rank: null, score: p.score, gain: p.lastGain || 0 },
       questionIndex: game.currentIndex,
       total: game.quiz.questions.length,
       isLast: game.currentIndex >= game.quiz.questions.length - 1,
@@ -654,12 +685,12 @@ io.on('connection', (socket) => {
 
     if (!player) {
       const nickname = cleanText(payload.nickname, 20);
-      if (!nickname) { cb({ error: 'Bir takma ad yaz.' }); return; }
+      if (!nickname) { cb({ error: 'Bir takım adı yaz.' }); return; }
       if (game.players.size >= MAX_PLAYERS_PER_GAME) { cb({ error: 'Oyun dolu.' }); return; }
       const nnorm = nickname.toLocaleLowerCase('tr-TR');
       for (const p of game.players.values()) {
         if (p.nickname.toLocaleLowerCase('tr-TR') === nnorm) {
-          cb({ error: 'Bu takma ad alinmis, baska bir tane dene.' });
+          cb({ error: 'Bu takım adı alınmış, başka bir tane dene.' });
           return;
         }
       }
@@ -760,7 +791,7 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Canli Quiz calisiyor: http://localhost:${PORT}`);
+  console.log(`BaBaBo Quiz calisiyor: http://localhost:${PORT}`);
   console.log(`Host paneli:        http://localhost:${PORT}/host`);
   console.log(`Admin sifresi:      ${ADMIN_PASSWORD === 'quiz123' ? 'quiz123 (degistirmek icin ADMIN_PASSWORD ortam degiskenini ayarla)' : '(ADMIN_PASSWORD ortam degiskeninden alindi)'}`);
 });

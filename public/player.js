@@ -1,4 +1,4 @@
-/* Canli Quiz - oyuncu istemcisi */
+/* BaBaBo Quiz - oyuncu istemcisi */
 'use strict';
 
 const VIEWS = ['v-join', 'v-lobby', 'v-question', 'v-waiting', 'v-result', 'v-leaderboard', 'v-final', 'v-info'];
@@ -34,11 +34,24 @@ function clearSession() {
 function setMeBar() {
   if (session) {
     show($('meBar'));
+    show($('topLogo'));
     $('meName').textContent = session.nickname;
     $('meScore').textContent = fmtPts(myScore);
   } else {
     hide($('meBar'));
+    hide($('topLogo'));
   }
+}
+
+function renderTeams(players) {
+  const grid = $('teamGrid');
+  if (!grid) return;
+  const list = (players || []).slice(0, 200);
+  grid.innerHTML = list.map((p) => (
+    '<span class="team-chip' + (p.connected ? '' : ' off') + (session && p.nickname === session.nickname ? ' me' : '') + '">' +
+      '<span class="dot"></span>' + esc(p.nickname) +
+    '</span>'
+  )).join('');
 }
 
 function joinError(msg) {
@@ -65,7 +78,7 @@ $('btnJoin').addEventListener('click', () => {
   const pin = $('inPin').value.replace(/\D/g, '');
   const name = $('inName').value.trim();
   if (pin.length !== 6) { joinError('6 haneli PIN kodunu yaz.'); return; }
-  if (!name) { joinError('Bir takma ad yaz.'); return; }
+  if (!name) { joinError('Bir takım adı yaz.'); return; }
   doJoin(pin, name, null, false);
 });
 
@@ -91,13 +104,14 @@ function applySnapshot(snap) {
     $('lobbyTitle').textContent = snap.title;
     $('lobbyName').textContent = session.nickname;
     $('lobbyCount').textContent = snap.lobby ? snap.lobby.count : 1;
+    renderTeams(snap.lobby ? snap.lobby.players : []);
     showView(VIEWS, 'v-lobby');
   } else if (snap.state === 'question' && snap.question) {
     renderQuestion(snap.question, snap.answered);
   } else if (snap.state === 'reveal' && snap.result) {
     renderResult(snap.result);
   } else if (snap.state === 'leaderboard' && snap.leaderboardData) {
-    renderLeaderboard(snap.leaderboardData);
+    renderLeaderboard(snap.leaderboardData, true);
   } else if (snap.state === 'ended' && snap.final) {
     renderFinal(snap.final);
   } else {
@@ -235,36 +249,27 @@ function renderResult(r) {
 
 /* ----------------------------------------------------- skor tablosu */
 
-function lbRow(r, isMe, i) {
-  const cls = ['lb-row'];
-  if (r.rank <= 3) cls.push('r' + r.rank);
-  if (isMe) cls.push('me');
-  return '<div class="' + cls.join(' ') + '" style="animation-delay:' + (i * 60) + 'ms">' +
-    '<div class="rank num">' + r.rank + '</div>' +
-    '<div class="name">' + esc(r.nickname) + '</div>' +
-    (r.gain > 0 ? '<div class="delta num">+' + fmtPts(r.gain) + '</div>' : '') +
-    '<div class="pts num">' + fmtPts(r.score) + '</div>' +
-    '</div>';
-}
+let lastAnimatedLb = -1;
 
-function renderLeaderboard(data) {
+function renderLeaderboard(data, forceStatic) {
   timer.stop();
   myScore = data.you ? data.you.score : myScore;
   setMeBar();
   $('lbProgress').textContent = (data.questionIndex + 1) + '. soru sonrası' + (data.isLast ? ' (son soru)' : '');
-  let html = '';
-  let meShown = false;
-  data.top.forEach((r, i) => {
-    const isMe = session && r.nickname === session.nickname;
-    if (isMe) meShown = true;
-    html += lbRow(r, isMe, i);
-  });
-  if (!meShown && data.you && data.you.rank) {
-    html += '<div class="centered muted tiny" style="margin-top:4px;">...</div>' +
-      lbRow({ rank: data.you.rank, nickname: session.nickname, score: data.you.score, gain: data.you.gain }, true, data.top.length);
-  }
-  $('lbList').innerHTML = html;
+
+  const animate = !forceStatic && data.questionIndex !== lastAnimatedLb;
+  if (animate) lastAnimatedLb = data.questionIndex;
+
+  const youRow = (data.you && data.you.rank)
+    ? { rank: data.you.rank, prevRank: data.you.prevRank, nickname: session.nickname, score: data.you.score, prevScore: data.you.prevScore, gain: data.you.gain }
+    : null;
+
   showView(VIEWS, 'v-leaderboard');
+  renderLeaderboardAnimated($('lbList'), data.top, {
+    animate,
+    isMe: (n) => session && n === session.nickname,
+    youRow,
+  });
 }
 
 /* ------------------------------------------------------------- final */
@@ -301,6 +306,7 @@ function renderFinal(f) {
 
 socket.on('lobby:update', (d) => {
   $('lobbyCount').textContent = d.count;
+  if (!$('v-lobby').classList.contains('hidden')) renderTeams(d.players);
 });
 
 socket.on('question:start', (q) => renderQuestion(q, false));
@@ -359,7 +365,7 @@ socket.on('connect', () => {
   if (urlPin) {
     $('inPin').value = urlPin;
     socket.emit('game:exists', { pin: urlPin }, (res) => {
-      if (res && res.ok && res.title) $('joinSub').textContent = res.title + ' | Adını yaz ve katıl';
+      if (res && res.ok && res.title) $('joinSub').textContent = res.title + ' | Takım adını yaz ve katıl';
     });
     $('inName').focus();
   }

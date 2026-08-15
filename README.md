@@ -1,8 +1,8 @@
-# Canlı Quiz
+# BaBaBo Quiz
 
-Kahoot tarzı canlı yarışma sitesi. Soruları kendi panelinden hazırlarsın, katılımcılar telefonlarından PIN kodu ya da QR ile girer, puanlar anlık olarak hesaplanır ve skor tablosu ekrana yansır.
+Kahoot tarzı canlı yarışma sitesi. Soruları kendi panelinden hazırlarsın, takımlar telefonlarından PIN kodu ya da QR ile girer, puanlar anlık olarak hesaplanır ve skor tablosu ekrana yansır.
 
-Öne çıkanlar: her soruya ayrı puan değeri girebilirsin (10, 50, 250, ne istersen), çoktan seçmelinin yanında boşluk doldurma soruları sorabilirsin, 80 ve üzeri eşzamanlı katılımcıyı rahat kaldırır, soru aralarında canlı skor tablosu ve oyun sonunda podyum gösterir.
+Öne çıkanlar: her soruya ayrı puan değeri girebilirsin (10, 50, 250, ne istersen), çoktan seçmelinin yanında boşluk doldurma soruları sorabilirsin, 80 ve üzeri eşzamanlı katılımcıyı rahat kaldırır. Bekleme ekranında katılan takımlar herkesin telefonunda canlı olarak listelenir. Skor tablosu her soru sonrasında önce eski sıralamayı gösterir, kazanılan puanlar rozet olarak düşer, skorlar sayarak artar ve satırlar yeni sırasına animasyonla kayar. Oyun sonunda podyum ve tam sıralama gelir.
 
 ## Bilgisayarında çalıştırmak (2 dakika)
 
@@ -44,9 +44,9 @@ Render'ın ücretsiz planı bu iş için yeterli. Kart bilgisi istemez.
 ## Bilinmesi gerekenler
 
 - Quizler, host panelini açtığın tarayıcıda saklanır. Başka bir bilgisayardan sunacaksan quizi "İndir" ile JSON olarak alıp orada "İçe Aktar" ile yükle. Önemli quizlerin yedeğini almak için de aynı yöntemi kullan.
-- Bağlantısı kopan oyuncu (telefon kilitlendi, ağ değişti vb.) sayfaya geri döndüğünde puanı korunmuş şekilde kaldığı yerden devam eder.
+- Bağlantısı kopan takım (telefon kilitlendi, ağ değişti vb.) sayfaya geri döndüğünde puanı korunmuş şekilde kaldığı yerden devam eder.
 - Host ekranında sayfayı yanlışlıkla yenilersen oyun bozulmaz, kaldığı yerden devam edersin.
-- Aynı takma adı ikinci bir kişi alamaz. Lobide bir ismin yanındaki çarpıya basarak o oyuncuyu çıkarabilirsin.
+- Aynı takım adını ikinci bir kişi alamaz. Lobide bir ismin yanındaki çarpıya basarak o takımı çıkarabilirsin.
 - Doğru cevaplar oyunculara hiçbir aşamada gönderilmez, puanlama tamamen sunucuda yapılır. Yani tarayıcı konsolunu açan kurnaz bir katılımcı doğru cevabı göremez.
 - Geri sayımın son 5 saniyesinde host ekranı bip sesi çalar, sağ üstten kapatabilirsin.
 
