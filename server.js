@@ -678,7 +678,8 @@ io.on('connection', (socket) => {
   socket.on('player:join', safe((payload, cb) => {
     const game = games.get(String(payload.pin || ''));
     if (!game) { cb({ error: 'Bu PIN ile acik bir oyun yok.' }); return; }
-    if (game.state === 'ended') { cb({ error: 'Bu oyun sona erdi.' }); return; }
+    // Not: biten oyuna YENI oyuncu alinmaz ama mevcut oyuncu final ekranini
+    // gormek icin geri donebilir (asagida kontrol ediliyor).
 
     const token = String(payload.token || '');
     let player = token ? game.players.get(token) : null;
@@ -688,24 +689,35 @@ io.on('connection', (socket) => {
       if (!nickname) { cb({ error: 'Bir takım adı yaz.' }); return; }
       if (game.players.size >= MAX_PLAYERS_PER_GAME) { cb({ error: 'Oyun dolu.' }); return; }
       const nnorm = nickname.toLocaleLowerCase('tr-TR');
+      let sameName = null;
       for (const p of game.players.values()) {
-        if (p.nickname.toLocaleLowerCase('tr-TR') === nnorm) {
-          cb({ error: 'Bu takım adı alınmış, başka bir tane dene.' });
+        if (p.nickname.toLocaleLowerCase('tr-TR') === nnorm) { sameName = p; break; }
+      }
+      if (sameName) {
+        if (sameName.connected) {
+          cb({ error: 'Bu takım adı şu an oyunda, başka bir tane dene.' });
           return;
         }
+        // Baglantisi kopmus takim ayni adla geri donuyor (telefon/tarayici
+        // degisse bile): skoru ve cevaplari korunarak devralinir.
+        player = sameName;
+      } else {
+        if (game.state === 'ended') { cb({ error: 'Bu oyun sona erdi.' }); return; }
+        player = {
+          token: crypto.randomUUID(),
+          nickname,
+          score: 0,
+          lastGain: 0,
+          lastResult: null,
+          answers: {},
+          connected: true,
+          socketId: socket.id,
+          joinedAt: now(),
+        };
+        game.players.set(player.token, player);
       }
-      player = {
-        token: crypto.randomUUID(),
-        nickname,
-        score: 0,
-        lastGain: 0,
-        lastResult: null,
-        answers: {},
-        connected: true,
-        socketId: socket.id,
-        joinedAt: now(),
-      };
-      game.players.set(player.token, player);
+      player.connected = true;
+      player.socketId = socket.id;
     } else {
       // yeniden baglanma: skor ve cevaplar korunur
       if (player.socketId && player.socketId !== socket.id) {
@@ -722,6 +734,20 @@ io.on('connection', (socket) => {
     broadcastLobby(game);
     emitProgress(game);
     cb({ ok: true, token: player.token, nickname: player.nickname, snapshot: playerSnapshot(game, player) });
+  }));
+
+  socket.on('player:leave', safe((payload, cb) => {
+    const game = games.get(String(payload.pin || ''));
+    if (!game) { cb({ ok: true }); return; }
+    const player = game.players.get(String(payload.token || ''));
+    if (player && player.socketId === socket.id) {
+      player.connected = false;
+      player.socketId = null;
+      socket.leave(room(game));
+      socket.data.playerRef = null;
+      broadcastLobby(game);
+    }
+    cb({ ok: true });
   }));
 
   socket.on('player:sync', safe((payload, cb) => {

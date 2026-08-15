@@ -135,6 +135,21 @@ const QUIZ = {
   const rejoin = await emit(p3.socket, 'player:join', { pin: PIN, nickname: p3.name, token: p3.token });
   assert(rejoin.ok && rejoin.snapshot.you.score === 100, 'Oyuncu3 skoru koruyarak geri dondu', rejoin.snapshot && rejoin.snapshot.you);
 
+  // Token'siz kurtarma: farkli cihaz/tarayici, ayni takim adi
+  const p5 = players[4];
+  p5.socket.close();
+  await sleep(400);
+  p5.socket = await connect();
+  p5.socket.on('question:result', (r) => p5.results.push(r));
+  p5.socket.on('game:ended', (f) => { p5.final = f; });
+  const reclaim = await emit(p5.socket, 'player:join', { pin: PIN, nickname: 'OYUNCU5' });
+  assert(reclaim.ok && reclaim.snapshot.you.score === 100, 'Oyuncu5 token olmadan ayni adla skoru devraldi', reclaim.error || (reclaim.snapshot && reclaim.snapshot.you));
+  p5.token = reclaim.token;
+  const stillTaken = await connect();
+  const st = await emit(stillTaken, 'player:join', { pin: PIN, nickname: 'Oyuncu5' });
+  assert(!!st.error, 'bagli takimin adi hala korunuyor', st);
+  stillTaken.close();
+
   /* ---- skor tablosu ---- */
   const lbP = once(players[0].socket, 'leaderboard');
   const lbH = once(host, 'leaderboard');

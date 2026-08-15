@@ -64,7 +64,12 @@ function doJoin(pin, nickname, token, silent) {
   socket.emit('player:join', { pin, nickname, token }, (res) => {
     if (!res || res.error) {
       if (!silent) joinError(res ? res.error : 'Sunucuya ulaşılamadı.');
-      if (silent) { clearSession(); showView(VIEWS, 'v-join'); }
+      if (silent) {
+        clearSession();
+        const up = (new URLSearchParams(location.search).get('pin') || '').replace(/\D/g, '').slice(0, 6);
+        if (up) $('inPin').value = up;
+        showView(VIEWS, 'v-join');
+      }
       return;
     }
     session = { pin, token: res.token, nickname: res.nickname };
@@ -90,6 +95,30 @@ $('btnInfoHome').addEventListener('click', () => {
   clearSession();
   myScore = 0;
   setMeBar();
+  showView(VIEWS, 'v-join');
+});
+
+// Oyundan cik: skor sunucuda durur, ayni takim adiyla geri donulebilir
+$('btnLeave').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  if (!btn.dataset.confirm) {
+    btn.dataset.confirm = '1';
+    btn.textContent = 'Emin misin?';
+    btn.style.color = 'var(--bad)';
+    setTimeout(() => { delete btn.dataset.confirm; btn.textContent = 'Çık'; btn.style.color = 'var(--ink-3)'; }, 2500);
+    return;
+  }
+  delete btn.dataset.confirm;
+  btn.textContent = 'Çık';
+  btn.style.color = 'var(--ink-3)';
+  const old = session;
+  clearSession();
+  myScore = 0;
+  timer.stop();
+  if (old) socket.emit('player:leave', { pin: old.pin, token: old.token }, () => {});
+  setMeBar();
+  $('inPin').value = '';
+  $('inName').value = '';
   showView(VIEWS, 'v-join');
 });
 
@@ -350,16 +379,9 @@ socket.on('connect', () => {
 
   const saved = loadSession();
   if (saved && saved.pin && saved.token && (!urlPin || urlPin === saved.pin)) {
+    // Dogrudan token ile geri don; oyun bitmis olsa bile final ekrani gelir.
     session = saved;
-    socket.emit('game:exists', { pin: saved.pin }, (res) => {
-      if (res && res.ok) {
-        doJoin(saved.pin, saved.nickname, saved.token, true);
-      } else {
-        clearSession();
-        if (urlPin) $('inPin').value = urlPin;
-        showView(VIEWS, 'v-join');
-      }
-    });
+    doJoin(saved.pin, saved.nickname, saved.token, true);
     return;
   }
   if (urlPin) {

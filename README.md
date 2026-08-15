@@ -44,7 +44,8 @@ Render'ın ücretsiz planı bu iş için yeterli. Kart bilgisi istemez.
 ## Bilinmesi gerekenler
 
 - Quizler, host panelini açtığın tarayıcıda saklanır. Başka bir bilgisayardan sunacaksan quizi "İndir" ile JSON olarak alıp orada "İçe Aktar" ile yükle. Önemli quizlerin yedeğini almak için de aynı yöntemi kullan.
-- Bağlantısı kopan takım (telefon kilitlendi, ağ değişti vb.) sayfaya geri döndüğünde puanı korunmuş şekilde kaldığı yerden devam eder.
+- Bağlantısı kopan ya da sayfayı yenileyen takım, puanı korunmuş şekilde kaldığı yerden devam eder. Telefon veya tarayıcı tamamen değişse bile aynı takım adıyla tekrar girmek yeterlidir; skor geri gelir. Ad çalınmasın diye bu yalnızca bağlantısı kopuk takımlar için çalışır, bağlı bir takımın adıyla ikinci kişi giremez.
+- Skorlar sunucunun belleğinde tutulur. GitHub'a dosya yüklemek Render'da yeniden deploy başlatır ve o anda açık olan oyunları sıfırlar; canlı oyun sırasında güncelleme yükleme.
 - Host ekranında sayfayı yanlışlıkla yenilersen oyun bozulmaz, kaldığı yerden devam edersin.
 - Aynı takım adını ikinci bir kişi alamaz. Lobide bir ismin yanındaki çarpıya basarak o takımı çıkarabilirsin.
 - Doğru cevaplar oyunculara hiçbir aşamada gönderilmez, puanlama tamamen sunucuda yapılır. Yani tarayıcı konsolunu açan kurnaz bir katılımcı doğru cevabı göremez.
