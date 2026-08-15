@@ -1,0 +1,367 @@
+/* Canli Quiz - oyuncu istemcisi */
+'use strict';
+
+const VIEWS = ['v-join', 'v-lobby', 'v-question', 'v-waiting', 'v-result', 'v-leaderboard', 'v-final', 'v-info'];
+const socket = io();
+
+let session = null; // { pin, token, nickname }
+let current = { index: null, answered: false, type: null };
+let myScore = 0;
+
+const timer = makeTimer(
+  (remain, total) => renderTimer($('timerFill'), $('timerNum'), remain, total),
+  () => {
+    // Sure doldu: girisleri kilitle, sonucun gelmesini bekle
+    lockQuestionInputs();
+  }
+);
+
+/* ------------------------------------------------ oturum sakla/yukle */
+
+function saveSession() {
+  try { localStorage.setItem('cq_session', JSON.stringify(session)); } catch (e) {}
+}
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem('cq_session') || 'null'); } catch (e) { return null; }
+}
+function clearSession() {
+  session = null;
+  try { localStorage.removeItem('cq_session'); } catch (e) {}
+}
+
+/* ------------------------------------------------------------ katilim */
+
+function setMeBar() {
+  if (session) {
+    show($('meBar'));
+    $('meName').textContent = session.nickname;
+    $('meScore').textContent = fmtPts(myScore);
+  } else {
+    hide($('meBar'));
+  }
+}
+
+function joinError(msg) {
+  const box = $('joinErr');
+  box.textContent = msg;
+  show(box);
+}
+
+function doJoin(pin, nickname, token, silent) {
+  socket.emit('player:join', { pin, nickname, token }, (res) => {
+    if (!res || res.error) {
+      if (!silent) joinError(res ? res.error : 'Sunucuya ulaşılamadı.');
+      if (silent) { clearSession(); showView(VIEWS, 'v-join'); }
+      return;
+    }
+    session = { pin, token: res.token, nickname: res.nickname };
+    saveSession();
+    applySnapshot(res.snapshot);
+  });
+}
+
+$('btnJoin').addEventListener('click', () => {
+  hide($('joinErr'));
+  const pin = $('inPin').value.replace(/\D/g, '');
+  const name = $('inName').value.trim();
+  if (pin.length !== 6) { joinError('6 haneli PIN kodunu yaz.'); return; }
+  if (!name) { joinError('Bir takma ad yaz.'); return; }
+  doJoin(pin, name, null, false);
+});
+
+$('inPin').addEventListener('input', () => {
+  $('inPin').value = $('inPin').value.replace(/\D/g, '').slice(0, 6);
+});
+
+$('btnInfoHome').addEventListener('click', () => {
+  clearSession();
+  myScore = 0;
+  setMeBar();
+  showView(VIEWS, 'v-join');
+});
+
+/* --------------------------------------------------- anlik goruntu */
+
+function applySnapshot(snap) {
+  if (!snap) return;
+  myScore = snap.you ? snap.you.score : 0;
+  setMeBar();
+
+  if (snap.state === 'lobby') {
+    $('lobbyTitle').textContent = snap.title;
+    $('lobbyName').textContent = session.nickname;
+    $('lobbyCount').textContent = snap.lobby ? snap.lobby.count : 1;
+    showView(VIEWS, 'v-lobby');
+  } else if (snap.state === 'question' && snap.question) {
+    renderQuestion(snap.question, snap.answered);
+  } else if (snap.state === 'reveal' && snap.result) {
+    renderResult(snap.result);
+  } else if (snap.state === 'leaderboard' && snap.leaderboardData) {
+    renderLeaderboard(snap.leaderboardData);
+  } else if (snap.state === 'ended' && snap.final) {
+    renderFinal(snap.final);
+  } else {
+    $('lobbyTitle').textContent = snap.title || '';
+    $('lobbyName').textContent = session ? session.nickname : '';
+    showView(VIEWS, 'v-lobby');
+  }
+}
+
+/* ------------------------------------------------------------- soru */
+
+function lockQuestionInputs() {
+  for (const b of document.querySelectorAll('#optGrid .opt-btn')) b.disabled = true;
+  $('fibInput').disabled = true;
+  const btn = document.querySelector('#fibForm button');
+  if (btn) btn.disabled = true;
+}
+
+function renderQuestion(q, alreadyAnswered) {
+  current = { index: q.index, answered: !!alreadyAnswered, type: q.type };
+  $('qNo').textContent = (q.index + 1) + ' / ' + q.total;
+  $('qPts').textContent = fmtPts(q.points);
+  $('qText').textContent = q.text;
+
+  const grid = $('optGrid');
+  const fib = $('fibForm');
+  grid.innerHTML = '';
+
+  if (q.type === 'mc') {
+    show(grid); hide(fib);
+    grid.classList.toggle('single', q.options.length <= 3 && q.options.some((o) => o.length > 24));
+    q.options.forEach((opt, i) => {
+      const b = document.createElement('button');
+      b.className = 'opt-btn opt-c' + ((i % 6) + 1);
+      b.innerHTML = shapeSpan(i) + '<span>' + esc(opt) + '</span>';
+      b.addEventListener('click', () => submitAnswer(i, b));
+      grid.appendChild(b);
+    });
+  } else {
+    hide(grid); show(fib);
+    $('fibInput').value = '';
+    $('fibInput').disabled = false;
+    document.querySelector('#fibForm button').disabled = false;
+  }
+
+  if (q.endsAt) {
+    timer.start(q.endsAt, q.serverNow, q.timeLimit);
+  } else {
+    timer.stop();
+    renderTimer($('timerFill'), $('timerNum'), null, null);
+  }
+
+  if (current.answered) {
+    showView(VIEWS, 'v-waiting');
+  } else {
+    showView(VIEWS, 'v-question');
+    if (q.type === 'fib') setTimeout(() => $('fibInput').focus(), 250);
+  }
+}
+
+function submitAnswer(value, clickedBtn) {
+  if (current.answered) return;
+  current.answered = true;
+
+  if (current.type === 'mc') {
+    for (const b of document.querySelectorAll('#optGrid .opt-btn')) {
+      b.disabled = true;
+      if (b !== clickedBtn) b.classList.add('dim');
+    }
+    if (clickedBtn) clickedBtn.classList.add('picked');
+  }
+
+  socket.emit('player:answer', { pin: session.pin, token: session.token, index: current.index, value }, (res) => {
+    if (res && res.error) {
+      toast(res.error, true);
+      if (current.type === 'fib') {
+        current.answered = false;
+        return;
+      }
+    }
+    setTimeout(() => {
+      // Bu arada sonuc ekrani geldiyse dokunma
+      if (current.answered && !$('v-question').classList.contains('hidden')) {
+        showView(VIEWS, 'v-waiting');
+      }
+    }, current.type === 'mc' ? 350 : 0);
+  });
+}
+
+$('fibForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('fibInput').value.trim();
+  if (!v) { toast('Önce cevabını yaz.', true); return; }
+  submitAnswer(v, null);
+});
+
+/* ------------------------------------------------------------ sonuc */
+
+function renderResult(r) {
+  timer.stop();
+  myScore = r.score;
+  setMeBar();
+
+  const v = $('resVerdict');
+  if (!r.answered) {
+    v.textContent = 'Cevap vermedin';
+    v.className = 'verdict meh';
+  } else if (r.correct) {
+    v.textContent = 'DOĞRU!';
+    v.className = 'verdict ok';
+  } else {
+    v.textContent = 'YANLIŞ';
+    v.className = 'verdict no';
+  }
+  $('resGain').textContent = r.gain > 0 ? '+' + fmtPts(r.gain) + ' puan' : '+0 puan';
+  $('resScore').textContent = fmtPts(r.score);
+  $('resRank').textContent = r.rank ? r.rank + ' / ' + r.playerCount : '-';
+
+  const box = $('resAnswerBox');
+  let html = '';
+  if (r.answered && !r.correct && r.yourAnswer != null) {
+    html += '<div class="muted tiny" style="margin-bottom:4px;">Senin cevabın: ' + esc(String(r.yourAnswer)) + '</div>';
+  }
+  if (r.correctDisplay) {
+    if (r.correctDisplay.type === 'mc') {
+      html += 'Doğru cevap: ' + r.correctDisplay.texts.map(esc).join(' / ');
+    } else {
+      html += 'Doğru cevap: ' + r.correctDisplay.answers.slice(0, 3).map(esc).join(' / ');
+    }
+  }
+  if (html) { box.innerHTML = html; show(box); } else { hide(box); }
+
+  showView(VIEWS, 'v-result');
+}
+
+/* ----------------------------------------------------- skor tablosu */
+
+function lbRow(r, isMe, i) {
+  const cls = ['lb-row'];
+  if (r.rank <= 3) cls.push('r' + r.rank);
+  if (isMe) cls.push('me');
+  return '<div class="' + cls.join(' ') + '" style="animation-delay:' + (i * 60) + 'ms">' +
+    '<div class="rank num">' + r.rank + '</div>' +
+    '<div class="name">' + esc(r.nickname) + '</div>' +
+    (r.gain > 0 ? '<div class="delta num">+' + fmtPts(r.gain) + '</div>' : '') +
+    '<div class="pts num">' + fmtPts(r.score) + '</div>' +
+    '</div>';
+}
+
+function renderLeaderboard(data) {
+  timer.stop();
+  myScore = data.you ? data.you.score : myScore;
+  setMeBar();
+  $('lbProgress').textContent = (data.questionIndex + 1) + '. soru sonrası' + (data.isLast ? ' (son soru)' : '');
+  let html = '';
+  let meShown = false;
+  data.top.forEach((r, i) => {
+    const isMe = session && r.nickname === session.nickname;
+    if (isMe) meShown = true;
+    html += lbRow(r, isMe, i);
+  });
+  if (!meShown && data.you && data.you.rank) {
+    html += '<div class="centered muted tiny" style="margin-top:4px;">...</div>' +
+      lbRow({ rank: data.you.rank, nickname: session.nickname, score: data.you.score, gain: data.you.gain }, true, data.top.length);
+  }
+  $('lbList').innerHTML = html;
+  showView(VIEWS, 'v-leaderboard');
+}
+
+/* ------------------------------------------------------------- final */
+
+function renderFinal(f) {
+  timer.stop();
+  myScore = f.you ? f.you.score : myScore;
+  setMeBar();
+
+  const cols = [];
+  const medals = ['1', '2', '3'];
+  const order = [1, 0, 2]; // 2. - 1. - 3. seklinde diz
+  for (const oi of order) {
+    const p = f.podium[oi];
+    if (!p) continue;
+    cols.push('<div class="col col' + (oi + 1) + '" style="animation-delay:' + (oi * 150) + 'ms">' +
+      '<div class="who">' + esc(p.nickname) + '</div>' +
+      '<div class="score num">' + fmtPts(p.score) + '</div>' +
+      '<div class="box"><div class="medal">' + medals[oi] + '.</div></div>' +
+      '</div>');
+  }
+  $('podium').innerHTML = cols.join('');
+
+  if (f.you && f.you.rank) {
+    $('finalYou').textContent = 'Sıralaman: ' + f.you.rank + ' / ' + f.playerCount + ' (' + fmtPts(f.you.score) + ' puan)';
+  } else {
+    $('finalYou').textContent = '';
+  }
+  $('finalMeta').textContent = f.title;
+  showView(VIEWS, 'v-final');
+}
+
+/* --------------------------------------------------- sunucu olaylari */
+
+socket.on('lobby:update', (d) => {
+  $('lobbyCount').textContent = d.count;
+});
+
+socket.on('question:start', (q) => renderQuestion(q, false));
+socket.on('question:result', (r) => renderResult(r));
+socket.on('leaderboard', (d) => renderLeaderboard(d));
+socket.on('game:ended', (f) => renderFinal(f));
+
+socket.on('player:kicked', () => {
+  clearSession();
+  timer.stop();
+  $('infoTitle').textContent = 'Oyundan çıkarıldın';
+  $('infoText').textContent = 'Sunucu seni oyundan çıkardı.';
+  showView(VIEWS, 'v-info');
+});
+
+socket.on('game:cancelled', (d) => {
+  clearSession();
+  timer.stop();
+  $('infoTitle').textContent = 'Oyun sonlandırıldı';
+  $('infoText').textContent = d && d.reason ? d.reason : 'Sunucu oyunu kapattı.';
+  showView(VIEWS, 'v-info');
+});
+
+/* ------------------------------------------- baglanti / kurtarma */
+
+socket.on('disconnect', () => show($('connBanner')));
+
+socket.on('connect', () => {
+  hide($('connBanner'));
+  if (session) {
+    // Kaldigi yerden devam et
+    doJoin(session.pin, session.nickname, session.token, true);
+  }
+});
+
+/* ------------------------------------------------------- baslangic */
+
+(function init() {
+  const params = new URLSearchParams(location.search);
+  const urlPin = (params.get('pin') || '').replace(/\D/g, '').slice(0, 6);
+
+  const saved = loadSession();
+  if (saved && saved.pin && saved.token && (!urlPin || urlPin === saved.pin)) {
+    session = saved;
+    socket.emit('game:exists', { pin: saved.pin }, (res) => {
+      if (res && res.ok) {
+        doJoin(saved.pin, saved.nickname, saved.token, true);
+      } else {
+        clearSession();
+        if (urlPin) $('inPin').value = urlPin;
+        showView(VIEWS, 'v-join');
+      }
+    });
+    return;
+  }
+  if (urlPin) {
+    $('inPin').value = urlPin;
+    socket.emit('game:exists', { pin: urlPin }, (res) => {
+      if (res && res.ok && res.title) $('joinSub').textContent = res.title + ' | Adını yaz ve katıl';
+    });
+    $('inName').focus();
+  }
+  showView(VIEWS, 'v-join');
+})();

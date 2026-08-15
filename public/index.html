@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0e1026">
+  <title>Canlı Quiz</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle fill='%237c6cff' cx='12' cy='12' r='11'/%3E%3Ctext x='12' y='17' font-size='13' font-weight='bold' text-anchor='middle' fill='white' font-family='sans-serif'%3E%3F%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <div id="connBanner" class="conn-banner hidden">Bağlantı koptu, yeniden bağlanılıyor...</div>
+
+  <div class="p-wrap">
+    <div class="p-topbar">
+      <div>
+        <div class="logo">Canlı Quiz</div>
+      </div>
+      <div id="meBar" class="hidden" style="display:flex; gap:8px; align-items:center;">
+        <span class="chip"><strong id="meName"></strong></span>
+        <span class="chip">Puan: <strong id="meScore" class="num">0</strong></span>
+      </div>
+    </div>
+
+    <div class="p-main">
+
+      <!-- Katilim -->
+      <div id="v-join" class="view">
+        <div class="card join-card">
+          <h2>Oyuna Katıl</h2>
+          <p class="muted" id="joinSub">Ekrandaki PIN kodunu ve adını yaz</p>
+          <div style="margin-top:18px; display:flex; flex-direction:column; gap:12px;">
+            <input id="inPin" class="input pin-input" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="PIN">
+            <input id="inName" class="input" maxlength="20" autocomplete="off" placeholder="Takma adın">
+            <button id="btnJoin" class="btn btn-primary btn-big">Katıl</button>
+          </div>
+          <div id="joinErr" class="error-box hidden"></div>
+        </div>
+      </div>
+
+      <!-- Lobi -->
+      <div id="v-lobby" class="view hidden">
+        <div class="card centered" style="padding:34px 22px;">
+          <h2 id="lobbyTitle"></h2>
+          <p style="font-size:20px; font-weight:800; margin-top:14px;">İçerdesin, <span id="lobbyName"></span>!</p>
+          <p class="muted">Adını sunucu ekranında görmelisin. Oyunun başlamasını bekle.</p>
+          <p class="chip" style="margin-top:16px;">Katılan: <strong id="lobbyCount" class="num">0</strong></p>
+        </div>
+      </div>
+
+      <!-- Soru -->
+      <div id="v-question" class="view hidden">
+        <div class="q-header">
+          <span class="chip">Soru <strong id="qNo" class="num"></strong></span>
+          <span class="chip"><strong id="qPts" class="num"></strong> puan</span>
+        </div>
+        <div class="timer-track"><div id="timerFill" class="timer-fill"></div></div>
+        <div id="timerNum" class="timer-num num"></div>
+        <div id="qText" class="q-text"></div>
+        <div id="optGrid" class="opt-grid"></div>
+        <form id="fibForm" class="fib-form hidden" autocomplete="off">
+          <input id="fibInput" class="input" maxlength="100" placeholder="Cevabını yaz..." autocomplete="off" autocapitalize="off">
+          <button class="btn btn-primary btn-big" type="submit">Gönder</button>
+        </form>
+      </div>
+
+      <!-- Cevap alindi -->
+      <div id="v-waiting" class="view hidden">
+        <div class="card centered" style="padding:34px 22px;">
+          <h2>Cevabın alındı</h2>
+          <p class="muted" style="animation:pulse 1.6s infinite;">Diğer oyuncular bekleniyor...</p>
+        </div>
+      </div>
+
+      <!-- Sonuc -->
+      <div id="v-result" class="view hidden">
+        <div class="card result-hero">
+          <div id="resVerdict" class="verdict"></div>
+          <div id="resGain" class="gain num"></div>
+          <div id="resAnswerBox" class="answer-reveal hidden"></div>
+          <div class="stat-row">
+            <span class="chip">Toplam: <strong id="resScore" class="num"></strong></span>
+            <span class="chip">Sıran: <strong id="resRank" class="num"></strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Skor tablosu -->
+      <div id="v-leaderboard" class="view hidden">
+        <h2 class="centered">Skor Tablosu</h2>
+        <p class="centered muted tiny" id="lbProgress"></p>
+        <div id="lbList" class="lb-list"></div>
+      </div>
+
+      <!-- Final -->
+      <div id="v-final" class="view hidden">
+        <h2 class="centered">Oyun Bitti!</h2>
+        <div id="podium" class="podium"></div>
+        <div class="card centered" style="margin-top:14px;">
+          <p style="font-size:18px; font-weight:800;" id="finalYou"></p>
+          <p class="muted" id="finalMeta"></p>
+        </div>
+      </div>
+
+      <!-- Bilgi (atildi / iptal) -->
+      <div id="v-info" class="view hidden">
+        <div class="card centered" style="padding:34px 22px;">
+          <h2 id="infoTitle"></h2>
+          <p class="muted" id="infoText"></p>
+          <button id="btnInfoHome" class="btn btn-primary" style="margin-top:14px;">Yeni oyuna katıl</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared.js"></script>
+  <script src="/player.js"></script>
+</body>
+</html>

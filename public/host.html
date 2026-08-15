@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0e1026">
+  <title>Canlı Quiz | Sunucu Paneli</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle fill='%237c6cff' cx='12' cy='12' r='11'/%3E%3Ctext x='12' y='17' font-size='13' font-weight='bold' text-anchor='middle' fill='white' font-family='sans-serif'%3E%3F%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <div id="connBanner" class="conn-banner hidden">Bağlantı koptu, yeniden bağlanılıyor...</div>
+
+  <div class="h-wrap">
+    <div class="h-header">
+      <div>
+        <div class="logo">Canlı Quiz</div>
+        <div class="logo-sub">Sunucu Paneli</div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <span class="chip hidden" id="hdrUrl"></span>
+      </div>
+    </div>
+
+    <!-- Giris -->
+    <div id="v-login" class="view hidden">
+      <div class="card" style="max-width:420px; margin:60px auto; text-align:center; padding:30px;">
+        <h2>Yönetici Girişi</h2>
+        <p class="muted">Soruları hazırlamak ve oyunu yönetmek için şifreni gir.</p>
+        <form id="loginForm" style="margin-top:16px; display:flex; flex-direction:column; gap:12px;">
+          <input id="inPassword" type="password" class="input" placeholder="Yönetici şifresi" autocomplete="current-password">
+          <button class="btn btn-primary btn-big" type="submit">Giriş</button>
+        </form>
+        <div id="loginErr" class="error-box hidden"></div>
+      </div>
+    </div>
+
+    <!-- Quiz listesi -->
+    <div id="v-dash" class="view hidden">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <h2 style="margin:0;">Quizlerim</h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button id="btnNewQuiz" class="btn btn-primary">+ Yeni Quiz</button>
+          <button id="btnImport" class="btn">JSON İçe Aktar</button>
+          <input id="fileImport" type="file" accept=".json,application/json" class="hidden">
+        </div>
+      </div>
+      <p class="tiny">Quizler bu tarayıcıda saklanır. Yedeklemek ya da başka bilgisayara taşımak için "İndir" ile JSON dosyasını al.</p>
+      <div id="dashGrid" class="dash-grid"></div>
+    </div>
+
+    <!-- Editor -->
+    <div id="v-editor" class="view hidden">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <button id="btnBackDash" class="btn btn-sm">&larr; Quizlerim</button>
+        <input id="edTitle" class="input" style="flex:1; min-width:220px; font-weight:800; font-size:18px;" maxlength="80" placeholder="Quiz başlığı">
+        <span id="saveState" class="tiny"></span>
+        <button id="btnStartFromEditor" class="btn btn-primary">Oyunu Başlat</button>
+      </div>
+      <div id="qEditor" class="q-editor"></div>
+      <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+        <button id="btnAddMc" class="btn">+ Çoktan Seçmeli Soru</button>
+        <button id="btnAddFib" class="btn">+ Boşluk Doldurma Sorusu</button>
+      </div>
+    </div>
+
+    <!-- Oyun sahnesi -->
+    <div id="v-stage" class="view hidden">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <span class="chip" id="stTitle"></span>
+          <span class="chip">PIN: <strong id="stPin" class="num"></strong></span>
+          <span class="chip">Bağlı: <strong id="stConn" class="num">0</strong></span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="btnSound" class="btn btn-sm">Ses: Açık</button>
+          <button id="btnCancelGame" class="btn btn-sm btn-danger">Oyunu Kapat</button>
+        </div>
+      </div>
+
+      <!-- Lobi -->
+      <div id="s-lobby" class="hidden">
+        <div class="pin-hero">
+          <div class="label">Katılmak için</div>
+          <div id="joinUrl" style="font-size:clamp(18px,3.5vw,30px); font-weight:800; color:#cfd6ff;"></div>
+          <div class="label" style="margin-top:14px;">Oyun PIN kodu</div>
+          <div class="pin num" id="bigPin"></div>
+        </div>
+        <div class="join-info">
+          <div class="qr-box" id="qrBox"></div>
+          <div class="card" style="min-width:220px; text-align:center;">
+            <div style="font-size:44px; font-weight:900;" class="num" id="lobbyCount2">0</div>
+            <div class="muted">oyuncu katıldı</div>
+          </div>
+        </div>
+        <div id="playerChips" class="player-chips"></div>
+      </div>
+
+      <!-- Soru -->
+      <div id="s-question" class="hidden">
+        <div class="q-header">
+          <span class="chip">Soru <strong id="hQNo" class="num"></strong></span>
+          <span class="chip"><strong id="hQPts" class="num"></strong> puan</span>
+          <span class="chip">Cevaplayan: <strong id="hAnswered" class="num">0 / 0</strong></span>
+        </div>
+        <div class="timer-track"><div id="hTimerFill" class="timer-fill"></div></div>
+        <div id="hTimerNum" class="timer-num num"></div>
+        <div id="hQText" class="q-text" style="font-size:clamp(24px,4vw,38px);"></div>
+        <div id="hOptGrid" class="opt-grid"></div>
+        <div id="hFibHint" class="centered muted hidden" style="font-size:18px; margin-top:10px;">Oyuncular cevabı telefonlarına yazıyor...</div>
+      </div>
+
+      <!-- Sonuc / dagilim -->
+      <div id="s-reveal" class="hidden">
+        <div class="q-header">
+          <span class="chip">Soru <strong id="rQNo" class="num"></strong></span>
+          <span class="chip">Cevaplayan: <strong id="rAnswered" class="num"></strong></span>
+        </div>
+        <div id="rQText" class="q-text" style="font-size:clamp(20px,3vw,30px);"></div>
+        <div id="rCorrect" class="answer-reveal centered" style="font-size:20px;"></div>
+        <div id="rDist" class="dist"></div>
+      </div>
+
+      <!-- Skor tablosu -->
+      <div id="s-leaderboard" class="hidden">
+        <h2 class="centered" style="font-size:34px;">Skor Tablosu</h2>
+        <p class="centered muted" id="hLbProgress"></p>
+        <div id="hLbList" class="lb-list" style="max-width:640px; margin:14px auto 0;"></div>
+      </div>
+
+      <!-- Final -->
+      <div id="s-final" class="hidden">
+        <h2 class="centered" style="font-size:38px;">Oyun Bitti!</h2>
+        <p class="centered muted" id="hFinalTitle"></p>
+        <div id="hPodium" class="podium" style="max-width:640px; margin-left:auto; margin-right:auto;"></div>
+        <div class="card" style="max-width:640px; margin:18px auto 0;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <h3 style="margin:0;">Tüm Sonuçlar</h3>
+            <button id="btnCsv" class="btn btn-sm">CSV İndir</button>
+          </div>
+          <table class="table-plain" id="hFullTable"></table>
+        </div>
+      </div>
+
+      <div class="h-stagebar" id="stageBar"></div>
+    </div>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/shared.js"></script>
+  <script src="/host.js"></script>
+</body>
+</html>
